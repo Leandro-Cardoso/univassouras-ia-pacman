@@ -1,5 +1,7 @@
 # Pacman com IA
 
+Este projeto consiste em desenvolver um jogo do Pacman em Python para gerar dados próprios das partidas e aplicar técnicas de Inteligência Artificial, limpando os dados, definindo o que será previsto e treinando um modelo para antecipar as jogadas do jogador.
+
 ## Visão Geral do Projeto
 
 *   **Problema a Resolver:** Prever o risco iminente de derrota (se o Pacman será capturado por um fantasma no próximo instante) com base nas variáveis dinâmicas do jogo e na posição espacial do jogador.
