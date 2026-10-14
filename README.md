@@ -2,16 +2,24 @@
 
 Este projeto consiste em desenvolver um jogo do Pacman em Python para gerar dados próprios das partidas e aplicar técnicas de Inteligência Artificial, limpando os dados, definindo o que será previsto e treinando um modelo para antecipar as jogadas do jogador.
 
+## Integrantes
+
+* Leandro Lima Cardoso (202323366)
+* João Vitor Afonso Damascena (202312489)
+* Emanuele Gomez (202323327)
+* Almir Coelho Rubim Junior (202312480)
+
 ## Visão Geral do Projeto
 
-*   **Problema a Resolver:** Prever o risco iminente de derrota (se o Pacman será capturado por um fantasma no próximo instante) com base nas variáveis dinâmicas do jogo e na posição espacial do jogador.
+*   **Problema a Resolver:** Prever o movimento do jogador e antecipar sua jogada e dividindo os fantasmas entre as possiveis rotas mais provaveis com base nas variáveis dinâmicas do jogo e na posição espacial do jogador e dos fantasmas.
 
 *   **Tecnologias Utilizadas:** 
     *   **Jogo:** Python (`Pygame` para a interface e lógica do jogo).
 
-    *   **Análise e IA:** Jupyter Notebook / Google Colab, `Pandas`, `NumPy`, `Scikit-learn` e `Matplotlib`[cite: 21].
+    *   **Análise e IA:** Jupyter Notebook, `Pandas`, `NumPy`, `Scikit-learn` e `Matplotlib`.
 
 ## Arquitetura do Sistema
+
 A arquitetura do projeto divide-se em três grandes camadas: o **Ambiente (Geração de Dados)**, a **Camada de Dados (Pipeline)** e a **Camada de Inteligência (Machine Learning)**.
 
 ```text
@@ -46,11 +54,11 @@ Etapa 1: Jogo e a Geração de Dados:
 
 * Em cada loop do jogo (while running), extrair as coordenadas e salvar em uma lista que, ao fim da partida, é convertida e salva como dataset_pacman.csv.
 
-* Talvez seja melhor extrair e salvar os dados apenas no intervalo de tempo em que o jogador se move (na sua velocidade).
+* Otimização de Coleta: Extrair e salvar os dados apenas no intervalo de tempo em que o jogador se move (na sua velocidade de quadros/passos), evitando gerar dados repetidos de quando o jogador está parado.
 
 ---
 
-Etapa 2: Análise Exploratória e Limpeza (Google Colab / Pandas):
+Etapa 2: Análise Exploratória e Limpeza (Pandas):
 
 1. Carregar o CSV com pd.read_csv().
 
@@ -60,12 +68,18 @@ Etapa 2: Análise Exploratória e Limpeza (Google Colab / Pandas):
 
 4. Separar as variáveis preditoras ($X$) da resposta ($y$):
 
+4. Separar as variáveis preditoras ($X$) da resposta ($y$):
+
+    * Features ($X$): pacman_x, pacman_y, fantasma_dist_min, modo_medo, ultimas_direcoes.
+    
+    * Target ($y$): proxima_direcao_jogador (ex: Cima, Baixo, Esquerda, Direita).
+
 ---
 
 Etapa 3: Modelagem e Validação (Scikit-learn)
 
 1. Divisão de Treino e Teste: Separar 80% dos dados para treino e 20% para teste (evitando o overfitting por memorização).
 
-2. Treinamento: Utilizar um modelo de classificação simples e eficiente, como a Árvore de Decisão (DecisionTreeClassifier) ou Random Forest.
+2. Treinamento: Utilizar um modelo de classificação simples e eficiente, como a Árvore de Decisão (DecisionTreeClassifier) ou Random Forest, para classificar a próxima direção mais provável do Pacman.
 
-3. Avaliação: Medir a acurácia do modelo e analisar se ele consegue antecipar com precisão os momentos de perigo do jogador.
+3. Avaliação: Medir a acurácia do modelo e analisar se ele consegue antecipar com precisão as escolhas de rota do jogador para orientar a inteligência dos fantasmas.
