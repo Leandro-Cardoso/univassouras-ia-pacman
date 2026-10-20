@@ -83,3 +83,14 @@ Etapa 3: Modelagem e Validação (Scikit-learn)
 2. Treinamento: Utilizar um modelo de classificação simples e eficiente, como a Árvore de Decisão (DecisionTreeClassifier) ou Random Forest, para classificar a próxima direção mais provável do Pacman.
 
 3. Avaliação: Medir a acurácia do modelo e analisar se ele consegue antecipar com precisão as escolhas de rota do jogador para orientar a inteligência dos fantasmas.
+
+## Build
+
+```cmd
+pip install pyinstaller
+```
+
+
+```cmd
+pyinstaller --onefile --noconsole src/game.py
+```
