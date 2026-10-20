@@ -15,10 +15,90 @@ PRETO = (0, 0, 0)
 AMARELO = (255, 255, 0)
 VERMELHO = (255, 0, 0)
 BRANCO = (255, 255, 255)
+AZUL = (0, 0, 255)
+GOLD = (255, 215, 0)
+
+# Configurações do Grid
+GRID_SIZE = 20
 
 # Relógio para controlar os FPS
 CLOCK = pygame.time.Clock()
 FPS = 30
+
+MAPA = [
+    "WWWWWWWWWWWWWWWWWWWWWWWWWWW",
+    "W............WW............W",
+    "W.WWWW.WWWWW.WW.WWWWW.WWWW.W",
+    "W.WWWW.WWWWW.WW.WWWWW.WWWW.W",
+    "W..........................W",
+    "W.WWWW.WW.WWWWWWWW.WW.WWWW.W",
+    "W......WW....WW....WW......W",
+    "WWWWWW.WWWWW WW WWWWW.WWWWWW",
+    "     W.WW          WW.W     ",
+    "WWWWWW.WW WWWWWWWW WW.WWWWWW",
+    "      .   W   P  W   .      ",
+    "WWWWWW.WW WWWWWWWW WW.WWWWWW",
+    "     W.WW          WW.W     ",
+    "WWWWWW.WW WWWWWWWW WW.WWWWWW",
+    "W............WW............W",
+    "W.WWWW.WWWWW.WW.WWWWW.WWWW.W",
+    "WW.WW.WW.WWWWWWWW.WW.WW.WW.W",
+    "W......WW....WW....WW......W",
+    "W.WWWWWWWWWW.WW.WWWWWWWWWW.W",
+    "W..........................W",
+    "WWWWWWWWWWWWWWWWWWWWWWWWWWWW",
+]
+
+LARGURA = len(MAPA[0]) * GRID_SIZE
+ALTURA = len(MAPA) * GRID_SIZE
+tela = pygame.display.set_mode((LARGURA, ALTURA))
+pygame.display.set_caption("Pac-man com IA")
+relogio = pygame.time.Clock()
+
+Paredes = []
+pacman_x, pacman_y = 0, 0
+
+for  linha_idx, linha in enumerate(MAPA):
+  for coluna_idx, caractere in enumerate(linha):
+    x = coluna_idx * GRID_SIZE
+    y = linha_idx * GRID_SIZE
+    if caractere == "W":
+      Paredes.append(pygame.Rect(x, y, GRID_SIZE, GRID_SIZE))
+    elif caractere == ".":
+      pacman_x, pacman_y = x, y
+
+      pacman_rect = pygame.Rect(pacman_x, pacman_y, 16, 16)
+
+dx, dy = 0, 0
+
+def desenhar_tabuleiro(superficie):
+  for linha_idx, linha in enumerate(MAPA):
+    for coluna_idx, caractere in enumerate(linha):
+      x = coluna_idx * GRID_SIZE
+      y = linha_idx * GRID_SIZE
+
+      if caractere == "W":
+        pygame.draw.rect(
+            superficie, AZUL, (x, y, GRID_SIZE, GRID_SIZE)
+        )
+      elif caractere == ".":
+        centro_x = x + GRID_SIZE // 2
+        centro_y = y + GRID_SIZE // 2
+        pygame.draw.circle(
+            superficie, AMARELO, (centro_x, centro_y), 2
+        )
+      elif caractere == "O":
+        centro_x = x + GRID_SIZE // 2
+        centro_y = y + GRID_SIZE // 2
+        pygame.draw.circle(
+            superficie, GOLD, (centro_x, centro_y), 6
+        )
+      elif caractere == "P":
+        centro_x = x + GRID_SIZE // 2
+        centro_y = y + GRID_SIZE // 2
+        pygame.draw.circle(
+            superficie, AMARELO, (centro_x, centro_y), 8
+        )
 
 class PacmanGame:
   def __init__(self):
@@ -52,7 +132,7 @@ class PacmanGame:
 
   def atualizar_posicao(self):
     movendo = False
-    x_antigo, y_antigo = self.pacman_x, self.pacman_y
+    direcao_anterior = self.direcao_atual
 
     if self.proxima_direcao == "Cima":
       self.pacman_y -= self.velocidade
@@ -67,9 +147,11 @@ class PacmanGame:
       self.pacman_x += self.velocidade
       movendo = True
 
-    if movendo:
-      self.direcao_atual = self.proxima_direcao
+    # Garante que o Pacman permaneça dentro da tela visível
+    self.pacman_x = max(10, min(LARGURA - 10, self.pacman_x))
+    self.pacman_y = max(10, min(ALTURA - 10, self.pacman_y))
 
+    if movendo:
       # Coleta de telemetria apenas quando o jogador se move (Otimização da Etapa 1)
       distancia_fantasma = (
           (self.pacman_x - self.fantasma_x) ** 2
@@ -81,21 +163,23 @@ class PacmanGame:
           "pacman_y": self.pacman_y,
           "fantasma_dist_min": round(distancia_fantasma, 2),
           "modo_medo": 0,
-          "ultimas_direcoes": self.direcao_atual,
+          "ultimas_direcoes": direcao_anterior,
           "proxima_direcao_jogador": self.proxima_direcao,
       })
+      self.direcao_atual = self.proxima_direcao
 
   def desenhar(self):
     TELA.fill(PRETO)
+    desenhar_tabuleiro(TELA)
 
     # Desenhar Pacman
     pygame.draw.circle(
-        TELA, AMARELO, (self.pacman_x, self.pacman_y), 20
+        TELA, AMARELO, (int(self.pacman_x), int(self.pacman_y)), 10
     )
 
     # Desenhar Fantasma
     pygame.draw.circle(
-        TELA, VERMELHO, (self.fantasma_x, self.fantasma_y), 20
+        TELA, VERMELHO, (int(self.fantasma_x), int(self.fantasma_y)), 10
     )
 
     pygame.display.flip()
