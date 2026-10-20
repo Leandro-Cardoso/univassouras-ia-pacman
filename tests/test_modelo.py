@@ -11,7 +11,7 @@ def test_modelo_ia():
   caminho_teste = "dataset_teste_modelo.csv"
   jogo = PacmanGame()
   
-  # Simula várias direções para gerar linhas suficientes para o split 80/20
+  # Simula várias direções para o split 80/20
   direcoes = ["Cima", "Baixo", "Esquerda", "Direita", "Cima", "Direita", "Baixo", "Esquerda", "Cima", "Baixo"]
   for direcao in direcoes:
     jogo.proxima_direcao = direcao

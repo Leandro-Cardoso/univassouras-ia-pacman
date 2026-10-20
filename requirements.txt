@@ -1,11 +1,16 @@
+altgraph==0.17.5
 cloudpickle==3.1.2
 joblib==1.6.0
 narwhals==2.27.1
 numpy==2.5.4
+packaging==26.3
 pandas==3.0.6
 pygame==2.6.1
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.8
 python-dateutil==2.9.0.post0
 scikit-learn==1.9.1
 scipy==1.18.1
+setuptools==84.2.0
 six==1.17.0
 threadpoolctl==3.7.0
