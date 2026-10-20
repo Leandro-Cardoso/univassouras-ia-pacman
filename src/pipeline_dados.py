@@ -36,6 +36,9 @@ class PipelineDados:
     print(f"Duplicatas encontradas: {self.df.duplicated().sum()}")
 
   def limpar_dados(self):
+    if self.df is None:
+      self.carregar_dados()
+
     # Remover linhas duplicadas
     self.df_limpo = self.df.drop_duplicates().copy()
 
