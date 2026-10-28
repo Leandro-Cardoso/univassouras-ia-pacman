@@ -5,7 +5,7 @@ Este projeto consiste em desenvolver um jogo do Pacman em Python para gerar dado
 ## Integrantes
 
 * Leandro Lima Cardoso (202323366)
-* João Vitor Afonso Damascena (202312489)
+* João Vitor Afonso Damasceno (202312489)
 * Emanuele Gomez (202323327)
 * Almir Coelho Rubim Junior (202312480)
 
