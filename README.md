@@ -90,7 +90,6 @@ Etapa 3: Modelagem e Validação (Scikit-learn)
 pip install pyinstaller
 ```
 
-
 ```cmd
 pyinstaller --onefile --noconsole src/game.py
 ```
