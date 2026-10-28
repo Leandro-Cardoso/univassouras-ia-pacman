@@ -5,11 +5,6 @@ import pygame
 # Inicialização do Pygame
 pygame.init()
 
-# Configurações da Tela
-LARGURA, ALTURA = 600, 600
-TELA = pygame.display.set_mode((LARGURA, ALTURA))
-pygame.display.set_caption("Pacman com IA")
-
 # Cores
 PRETO = (0, 0, 0)
 AMARELO = (255, 255, 0)
@@ -26,7 +21,7 @@ CLOCK = pygame.time.Clock()
 FPS = 30
 
 MAPA = [
-    "WWWWWWWWWWWWWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWWWWWWWWWWWWWW",
     "W............WW............W",
     "W.WWWW.WWWWW.WW.WWWWW.WWWW.W",
     "W.WWWW.WWWWW.WW.WWWWW.WWWW.W",
@@ -36,11 +31,11 @@ MAPA = [
     "WWWWWW.WWWWW WW WWWWW.WWWWWW",
     "     W.WW          WW.W     ",
     "WWWWWW.WW WWWWWWWW WW.WWWWWW",
-    "      .   W   P  W   .      ",
+    "      .   W      W   .      ",
     "WWWWWW.WW WWWWWWWW WW.WWWWWW",
     "     W.WW          WW.W     ",
     "WWWWWW.WW WWWWWWWW WW.WWWWWW",
-    "W............WW............W",
+    "W.....P......WW............W",
     "W.WWWW.WWWWW.WW.WWWWW.WWWW.W",
     "WW.WW.WW.WWWWWWWW.WW.WW.WW.W",
     "W......WW....WW....WW......W",
@@ -49,27 +44,20 @@ MAPA = [
     "WWWWWWWWWWWWWWWWWWWWWWWWWWWW",
 ]
 
+# Configurações da Tela baseadas no Mapa
 LARGURA = len(MAPA[0]) * GRID_SIZE
 ALTURA = len(MAPA) * GRID_SIZE
-tela = pygame.display.set_mode((LARGURA, ALTURA))
-pygame.display.set_caption("Pac-man com IA")
-relogio = pygame.time.Clock()
+TELA = pygame.display.set_mode((LARGURA, ALTURA))
+pygame.display.set_caption("Pacman com IA")
 
+# Construção das paredes a partir do mapa
 Paredes = []
-pacman_x, pacman_y = 0, 0
-
-for  linha_idx, linha in enumerate(MAPA):
+for linha_idx, linha in enumerate(MAPA):
   for coluna_idx, caractere in enumerate(linha):
     x = coluna_idx * GRID_SIZE
     y = linha_idx * GRID_SIZE
     if caractere == "W":
       Paredes.append(pygame.Rect(x, y, GRID_SIZE, GRID_SIZE))
-    elif caractere == ".":
-      pacman_x, pacman_y = x, y
-
-      pacman_rect = pygame.Rect(pacman_x, pacman_y, 16, 16)
-
-dx, dy = 0, 0
 
 def desenhar_tabuleiro(superficie):
   for linha_idx, linha in enumerate(MAPA):
@@ -81,7 +69,7 @@ def desenhar_tabuleiro(superficie):
         pygame.draw.rect(
             superficie, AZUL, (x, y, GRID_SIZE, GRID_SIZE)
         )
-      elif caractere == ".":
+      elif caractere in (".", "P"):
         centro_x = x + GRID_SIZE // 2
         centro_y = y + GRID_SIZE // 2
         pygame.draw.circle(
@@ -93,24 +81,28 @@ def desenhar_tabuleiro(superficie):
         pygame.draw.circle(
             superficie, GOLD, (centro_x, centro_y), 6
         )
-      elif caractere == "P":
-        centro_x = x + GRID_SIZE // 2
-        centro_y = y + GRID_SIZE // 2
-        pygame.draw.circle(
-            superficie, AMARELO, (centro_x, centro_y), 8
-        )
 
 class PacmanGame:
   def __init__(self):
-    self.pacman_x = 300
-    self.pacman_y = 300
+    # Procura a posição inicial do Pacman no mapa ('P') ou usa valor padrão seguro
+    self.pacman_x = 130
+    self.pacman_y = 290
+    for l_idx, linha in enumerate(MAPA):
+      for c_idx, char in enumerate(linha):
+        if char == "P":
+          self.pacman_x = c_idx * GRID_SIZE + GRID_SIZE // 2
+          self.pacman_y = l_idx * GRID_SIZE + GRID_SIZE // 2
+          break
+
     self.velocidade = 5
+    self.tamanho = 16  # Hitbox de colisão (16x16)
     self.direcao_atual = "Parado"
     self.proxima_direcao = "Parado"
+    self.paredes = Paredes
 
-    # Fantasma simulado para calcular a distância mínima
-    self.fantasma_x = 100
-    self.fantasma_y = 100
+    # Fantasma simulado posicionado na casa dos fantasmas
+    self.fantasma_x = 14 * GRID_SIZE + GRID_SIZE // 2
+    self.fantasma_y = 10 * GRID_SIZE + GRID_SIZE // 2
 
     # Lista para armazenar a telemetria da partida
     self.dados_telemetria = []
@@ -121,35 +113,79 @@ class PacmanGame:
       if evento.type == pygame.QUIT:
         self.rodando = False
       elif evento.type == pygame.KEYDOWN:
-        if evento.key == pygame.K_UP:
+        if evento.key in (pygame.K_UP, pygame.K_w):
           self.proxima_direcao = "Cima"
-        elif evento.key == pygame.K_DOWN:
+        elif evento.key in (pygame.K_DOWN, pygame.K_s):
           self.proxima_direcao = "Baixo"
-        elif evento.key == pygame.K_LEFT:
+        elif evento.key in (pygame.K_LEFT, pygame.K_a):
           self.proxima_direcao = "Esquerda"
-        elif evento.key == pygame.K_RIGHT:
+        elif evento.key in (pygame.K_RIGHT, pygame.K_d):
           self.proxima_direcao = "Direita"
+
+  def obter_delta(self, direcao):
+    if direcao == "Cima":
+      return 0, -self.velocidade
+    elif direcao == "Baixo":
+      return 0, self.velocidade
+    elif direcao == "Esquerda":
+      return -self.velocidade, 0
+    elif direcao == "Direita":
+      return self.velocidade, 0
+    return 0, 0
+
+  def pode_mover(self, dx, dy):
+    novo_x = self.pacman_x + dx
+    novo_y = self.pacman_y + dy
+    offset = self.tamanho // 2
+    novo_rect = pygame.Rect(
+        novo_x - offset, novo_y - offset, self.tamanho, self.tamanho
+    )
+
+    # Limites da tela (permite wrap no túnel da linha 10)
+    eh_tunel = 9 * GRID_SIZE <= novo_y <= 11 * GRID_SIZE
+    if not eh_tunel and (
+        novo_rect.left < 0
+        or novo_rect.right > LARGURA
+        or novo_rect.top < 0
+        or novo_rect.bottom > ALTURA
+    ):
+      return False
+
+    # Colisão com as paredes do labirinto
+    if novo_rect.collidelist(self.paredes) != -1:
+      return False
+
+    return True
 
   def atualizar_posicao(self):
     movendo = False
     direcao_anterior = self.direcao_atual
 
-    if self.proxima_direcao == "Cima":
-      self.pacman_y -= self.velocidade
+    # Tenta mover na próxima direção solicitada pelo jogador
+    dx, dy = self.obter_delta(self.proxima_direcao)
+    if (dx != 0 or dy != 0) and self.pode_mover(dx, dy):
+      self.pacman_x += dx
+      self.pacman_y += dy
+      self.direcao_atual = self.proxima_direcao
       movendo = True
-    elif self.proxima_direcao == "Baixo":
-      self.pacman_y += self.velocidade
-      movendo = True
-    elif self.proxima_direcao == "Esquerda":
-      self.pacman_x -= self.velocidade
-      movendo = True
-    elif self.proxima_direcao == "Direita":
-      self.pacman_x += self.velocidade
-      movendo = True
+    elif self.direcao_atual != "Parado":
+      # Se a próxima direção estiver bloqueada por parede, tenta continuar na direção atual
+      dx, dy = self.obter_delta(self.direcao_atual)
+      if self.pode_mover(dx, dy):
+        self.pacman_x += dx
+        self.pacman_y += dy
+        movendo = True
+      else:
+        self.direcao_atual = "Parado"
+    else:
+      self.direcao_atual = "Parado"
 
-    # Garante que o Pacman permaneça dentro da tela visível
-    self.pacman_x = max(10, min(LARGURA - 10, self.pacman_x))
-    self.pacman_y = max(10, min(ALTURA - 10, self.pacman_y))
+    # Wrap horizontal do túnel (linha 10)
+    if 9 * GRID_SIZE <= self.pacman_y <= 11 * GRID_SIZE:
+      if self.pacman_x < 0:
+        self.pacman_x = LARGURA
+      elif self.pacman_x > LARGURA:
+        self.pacman_x = 0
 
     if movendo:
       # Coleta de telemetria apenas quando o jogador se move (Otimização da Etapa 1)
@@ -166,7 +202,6 @@ class PacmanGame:
           "ultimas_direcoes": direcao_anterior,
           "proxima_direcao_jogador": self.proxima_direcao,
       })
-      self.direcao_atual = self.proxima_direcao
 
   def desenhar(self):
     TELA.fill(PRETO)
