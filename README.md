@@ -97,4 +97,6 @@ pyinstaller --onefile --noconsole src/game.py
 ## Comandos
 
 * **SETAS** - Movimentacão.
+* **ESPACO** - Pausa o jogo.
+* **ESC** - Retorna para menu.
 * **TAB** - Modo debug da IA.
