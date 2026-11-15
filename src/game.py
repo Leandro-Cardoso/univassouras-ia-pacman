@@ -77,16 +77,9 @@ OPOSTOS = {
 class PacmanGame:
     def __init__(self, nome_jogador):
         self.nome_jogador = nome_jogador
-        self.mapa = [list(linha) for linha in MAPA_ORIGINAL]
-        
-        self.pacman_x = 13 * GRID_SIZE + GRID_SIZE // 2
-        self.pacman_y = 23 * GRID_SIZE + GRID_SIZE // 2
-        for l_idx, linha in enumerate(self.mapa):
-            for c_idx, char in enumerate(linha):
-                if char == "P":
-                    self.pacman_x = c_idx * GRID_SIZE + GRID_SIZE // 2
-                    self.pacman_y = l_idx * GRID_SIZE + GRID_SIZE // 2
-                    self.mapa[l_idx][c_idx] = " "
+        self.pontuacao = 0
+        self.fase = 1
+        self.reiniciar_posicoes_e_mapa()
 
         self.velocidade_normal = 2
         self.velocidade_turbo = 3
@@ -94,7 +87,6 @@ class PacmanGame:
         self.tamanho = 18
         self.direcao_atual = "Parado"
         self.proxima_direcao = "Parado"
-        self.pontuacao = 0
 
         self.modo_medo_ativo = False
         self.timer_medo = 0
@@ -161,6 +153,25 @@ class PacmanGame:
         self.debug_mode = True
         self.logger = IALogger(nome_jogador)
 
+    def reiniciar_posicoes_e_mapa(self):
+        """Recarrega o mapa e redefine a posição inicial do Pac-Man."""
+        self.mapa = [list(linha) for linha in MAPA_ORIGINAL]
+        self.pacman_x = 13 * GRID_SIZE + GRID_SIZE // 2
+        self.pacman_y = 23 * GRID_SIZE + GRID_SIZE // 2
+        for l_idx, linha in enumerate(self.mapa):
+            for c_idx, char in enumerate(linha):
+                if char == "P":
+                    self.pacman_x = c_idx * GRID_SIZE + GRID_SIZE // 2
+                    self.pacman_y = l_idx * GRID_SIZE + GRID_SIZE // 2
+                    self.mapa[l_idx][c_idx] = " "
+
+    def verificar_fim_de_bolinhas(self):
+        """Verifica se ainda existem bolinhas ou pastilhas no mapa."""
+        for linha in self.mapa:
+            if "." in linha or "O" in linha:
+                return False
+        return True
+
     def processar_eventos(self):
         for evento in pygame.event.get():
             if evento.type == pygame.QUIT:
@@ -222,6 +233,7 @@ class PacmanGame:
 
     def verificar_coleta_pontos(self):
         col, lin = int(self.pacman_x // GRID_SIZE), int(self.pacman_y // GRID_SIZE)
+        
         if 0 <= lin < len(self.mapa) and 0 <= col < len(self.mapa[0]):
             item = self.mapa[lin][col]
             if item == ".":
@@ -235,6 +247,18 @@ class PacmanGame:
                 self.velocidade = self.velocidade_turbo
                 for f_data in self.fantasmas.values():
                     f_data['dir'] = OPOSTOS.get(f_data['dir'], f_data['dir'])
+
+        # 🌟 VERIFICA SE ACABARAM AS BOLINHAS PARA DAR BÔNUS E RESETAR O MAPA
+        if self.verificar_fim_de_bolinhas():
+            self.pontuacao += 1000  # Bônus por limpar o mapa
+            self.fase += 1
+            self.reiniciar_posicoes_e_mapa()
+            self.direcao_atual = "Parado"
+            self.proxima_direcao = "Parado"
+            # Reseta os fantasmas para as posições iniciais
+            for nome, f_data in self.fantasmas.items():
+                f_data['x'], f_data['y'] = self.posicoes_iniciais_fantasmas[nome]
+                f_data['dir'] = 'Cima'
 
     def verificar_colisoes_fantasmas(self):
         for nome, f_data in self.fantasmas.items():
@@ -274,7 +298,8 @@ class PacmanGame:
             self.pacman_x = self.pacman_x % LARGURA
 
         self.verificar_coleta_pontos()
-        self.verificar_colisoes_fantasmas()
+        if self.rodando:
+            self.verificar_colisoes_fantasmas()
 
     def calcular_proximo_passo_bfs(self, inicio_x, inicio_y, destino_x, destino_y, dir_atual, dentro_casa=False):
         inicio_col, inicio_lin = int(inicio_x // GRID_SIZE), int(inicio_y // GRID_SIZE)
@@ -385,7 +410,7 @@ class PacmanGame:
         if not self.debug_mode: return
         font = pygame.font.Font(None, 16)
         linhas = [
-            f"[JOGADOR: {self.nome_jogador} | PONTOS: {self.pontuacao} | TEMPO: {round(self.frame/FPS, 1)}s]",
+            f"[JOGADOR: {self.nome_jogador} | PONTOS: {self.pontuacao} | FASE: {self.fase} | TEMPO: {round(self.frame/FPS, 1)}s]",
             f"Blinky: {self.fantasmas['blinky']['estado']} | Dist: {self.fantasmas['blinky']['dist_alvo']}px",
             f"Pinky:  {self.fantasmas['pinky']['estado']} | Dist: {self.fantasmas['pinky']['dist_alvo']}px",
             f"Inky:   {self.fantasmas['inky']['estado']} | Dist: {self.fantasmas['inky']['dist_alvo']}px",
@@ -402,7 +427,7 @@ class PacmanGame:
         TELA.fill(PRETO)
         self.desenhar_tabuleiro(TELA)
 
-        # 🌟 PAC-MAN (Convertendo pixel central para célula correta do renderizador)
+        # 🌟 PAC-MAN (Alinhamento central corrigido para o renderizador vetorial)
         pac_cell_x = (self.pacman_x - GRID_SIZE // 2) / GRID_SIZE
         pac_cell_y = (self.pacman_y - GRID_SIZE // 2) / GRID_SIZE
         CharacterRenderer.draw_pacman(
@@ -411,7 +436,7 @@ class PacmanGame:
             GRID_SIZE, direction=self.direcao_atual, frame=self.frame
         )
 
-        # 🌟 FANTASMAS (Convertendo pixel central para célula correta do renderizador)
+        # 🌟 FANTASMAS (Alinhamento central corrigido para o renderizador vetorial)
         for nome, f_data in self.fantasmas.items():
             f_cell_x = (f_data['x'] - GRID_SIZE // 2) / GRID_SIZE
             f_cell_y = (f_data['y'] - GRID_SIZE // 2) / GRID_SIZE
