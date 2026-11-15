@@ -90,20 +90,8 @@ Etapa 3: Modelagem e Validação (Scikit-learn)
 pip install pyinstaller
 ```
 
-### Linux
-
 ```cmd
 python -m PyInstaller --onefile --noconsole --name PacMan_linux --paths src src/game.py
-```
-
-```cmd
-./dist/PacMan_linux
-```
-
-### Windows
-
-```cmd
-pyinstaller --onefile --noconsole src/game.py
 ```
 
 ## Comandos
