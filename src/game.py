@@ -64,9 +64,15 @@ for i, linha in enumerate(MAPA):
 LARGURA = len(MAPA[0]) * GRID_SIZE
 ALTURA = len(MAPA) * GRID_SIZE
 TELA = pygame.display.set_mode((LARGURA, ALTURA))
-pygame.display.set_caption("Pac-Man — IA com BFS e Alinhamento Corrigido")
+pygame.display.set_caption("Pac-Man — Movimentação Fluida Sem Flick")
 
 TUNNEL_ROW = 14
+OPOSTOS = {
+    "Cima": "Baixo",
+    "Baixo": "Cima",
+    "Esquerda": "Direita",
+    "Direita": "Esquerda",
+}
 
 Paredes = []
 for linha_idx, linha in enumerate(MAPA):
@@ -117,7 +123,6 @@ def desenhar_tabuleiro(superficie):
 
 class PacmanGame:
     def __init__(self):
-        # Localiza Pac-Man no mapa
         self.pacman_x = 13 * GRID_SIZE + GRID_SIZE // 2
         self.pacman_y = 23 * GRID_SIZE + GRID_SIZE // 2
         for l_idx, linha in enumerate(MAPA):
@@ -127,13 +132,13 @@ class PacmanGame:
                     self.pacman_y = l_idx * GRID_SIZE + GRID_SIZE // 2
                     break
 
+        # Divisor exato de GRID_SIZE (20) garante alinhamento exato no centro das células
         self.velocidade = 2
-        self.tamanho = 16
+        self.tamanho = 18
         self.direcao_atual = "Parado"
         self.proxima_direcao = "Parado"
         self.paredes = Paredes
 
-        # Dicionário com os 4 fantasmas
         self.fantasmas = {
             'blinky': {
                 'x': 13 * GRID_SIZE + GRID_SIZE // 2,
@@ -144,19 +149,19 @@ class PacmanGame:
             'pinky': {
                 'x': 13 * GRID_SIZE + GRID_SIZE // 2,
                 'y': 14 * GRID_SIZE + GRID_SIZE // 2,
-                'dir': 'Cima',
+                'dir': 'Esquerda',
                 'estado': 'BFS Antecipado'
             },
             'inky': {
                 'x': 12 * GRID_SIZE + GRID_SIZE // 2,
                 'y': 14 * GRID_SIZE + GRID_SIZE // 2,
-                'dir': 'Cima',
+                'dir': 'Direita',
                 'estado': 'BFS Flanco'
             },
             'clyde': {
                 'x': 15 * GRID_SIZE + GRID_SIZE // 2,
                 'y': 14 * GRID_SIZE + GRID_SIZE // 2,
-                'dir': 'Cima',
+                'dir': 'Esquerda',
                 'estado': 'BFS / Dispersão'
             }
         }
@@ -193,40 +198,79 @@ class PacmanGame:
             return self.velocidade, 0
         return 0, 0
 
-    def pode_mover(self, x, y, rect_size):
-        offset = rect_size // 2
-        novo_rect = pygame.Rect(x - offset, y - offset, rect_size, rect_size)
+    def celula_livre(self, col, lin):
+        """Verifica se a célula do mapa está livre de obstáculos ('W' ou 'G')."""
+        if lin == TUNNEL_ROW and (col < 0 or col >= len(MAPA[0])):
+            return True
+        if 0 <= lin < len(MAPA) and 0 <= col < len(MAPA[0]):
+            return MAPA[lin][col] not in ("W", "G")
+        return False
 
-        eh_tunel = TUNNEL_ROW * GRID_SIZE <= y < (TUNNEL_ROW + 1) * GRID_SIZE
-        if not eh_tunel and (
-            novo_rect.left < 0
-            or novo_rect.right > LARGURA
-            or novo_rect.top < 0
-            or novo_rect.bottom > ALTURA
-        ):
+    def pode_mover(self, x, y, direcao):
+        """Verifica se o próximo passo na direção informada não entra em célula bloqueada."""
+        dx, dy = self.obter_delta(direcao)
+        if dx == 0 and dy == 0:
             return False
 
-        if novo_rect.collidelist(self.paredes) != -1:
-            return False
-        return True
+        nx = x + dx
+        ny = y + dy
+
+        # Borda frontal do personagem (meia célula - 1px de folga)
+        raio = GRID_SIZE // 2 - 1
+        if direcao == "Cima":
+            check_x, check_y = nx, ny - raio
+        elif direcao == "Baixo":
+            check_x, check_y = nx, ny + raio
+        elif direcao == "Esquerda":
+            check_x, check_y = nx - raio, ny
+        else:  # Direita
+            check_x, check_y = nx + raio, ny
+
+        col = int(check_x // GRID_SIZE)
+        lin = int(check_y // GRID_SIZE)
+        return self.celula_livre(col, lin)
+
+    def no_centro_celula(self, x, y, tolerancia=2):
+        """Retorna True se (x, y) está alinhado ao centro da célula atual."""
+        col = int(x // GRID_SIZE)
+        lin = int(y // GRID_SIZE)
+        centro_x = col * GRID_SIZE + GRID_SIZE // 2
+        centro_y = lin * GRID_SIZE + GRID_SIZE // 2
+        return abs(x - centro_x) <= tolerancia and abs(y - centro_y) <= tolerancia
+
+    def alinhar_ao_centro(self, x, y):
+        """Ajusta exatamente ao centro da célula para evitar engasgos nas quinas."""
+        col = int(x // GRID_SIZE)
+        lin = int(y // GRID_SIZE)
+        return col * GRID_SIZE + GRID_SIZE // 2, lin * GRID_SIZE + GRID_SIZE // 2
 
     def atualizar_posicao_pacman(self):
         movendo = False
         direcao_anterior = self.direcao_atual
 
-        dx, dy = self.obter_delta(self.proxima_direcao)
-        if (dx != 0 or dy != 0) and self.pode_mover(self.pacman_x + dx, self.pacman_y + dy, self.tamanho):
-            self.pacman_x += dx
-            self.pacman_y += dy
-            self.direcao_atual = self.proxima_direcao
-            movendo = True
-        elif self.direcao_atual != "Parado":
-            dx, dy = self.obter_delta(self.direcao_atual)
-            if self.pode_mover(self.pacman_x + dx, self.pacman_y + dy, self.tamanho):
+        # 1. Tenta aplicar a direção desejada (buffer de entrada)
+        if self.proxima_direcao != "Parado" and self.proxima_direcao != self.direcao_atual:
+            eh_oposto = OPOSTOS.get(self.direcao_atual) == self.proxima_direcao
+            if eh_oposto and self.pode_mover(self.pacman_x, self.pacman_y, self.proxima_direcao):
+                # Inversão de 180° no mesmo corredor é imediata
+                self.direcao_atual = self.proxima_direcao
+            elif self.no_centro_celula(self.pacman_x, self.pacman_y):
+                # Curva de 90° só acontece se o corredor perpendicular estiver livre
+                cx, cy = self.alinhar_ao_centro(self.pacman_x, self.pacman_y)
+                if self.pode_mover(cx, cy, self.proxima_direcao):
+                    self.pacman_x, self.pacman_y = cx, cy
+                    self.direcao_atual = self.proxima_direcao
+
+        # 2. Move apenas se a direção atual estiver livre de obstáculos
+        if self.direcao_atual != "Parado":
+            if self.pode_mover(self.pacman_x, self.pacman_y, self.direcao_atual):
+                dx, dy = self.obter_delta(self.direcao_atual)
                 self.pacman_x += dx
                 self.pacman_y += dy
                 movendo = True
             else:
+                # Encosta perfeitamente no centro da célula antes da parede, sem flicar
+                self.pacman_x, self.pacman_y = self.alinhar_ao_centro(self.pacman_x, self.pacman_y)
                 self.direcao_atual = "Parado"
 
         if TUNNEL_ROW * GRID_SIZE <= self.pacman_y < (TUNNEL_ROW + 1) * GRID_SIZE:
@@ -234,32 +278,44 @@ class PacmanGame:
 
         return movendo, direcao_anterior
 
-    def calcular_proximo_passo_bfs(self, inicio_x, inicio_y, destino_x, destino_y):
-        """Calcula o caminho livre de colisão (sem bater em paredes 'W' ou 'G') usando BFS."""
-        inicio_col = int(round(inicio_x // GRID_SIZE))
-        inicio_lin = int(round(inicio_y // GRID_SIZE))
-        dest_col = int(round(destino_x // GRID_SIZE))
-        dest_lin = int(round(destino_y // GRID_SIZE))
+    def calcular_proximo_passo_bfs(self, inicio_x, inicio_y, destino_x, destino_y, dir_atual):
+        """Calcula rota livre de colisão pelo grid, evitando inversão brusca de 180°."""
+        inicio_col = int(inicio_x // GRID_SIZE)
+        inicio_lin = int(inicio_y // GRID_SIZE)
+        dest_col = max(0, min(len(MAPA[0]) - 1, int(destino_x // GRID_SIZE)))
+        dest_lin = max(0, min(len(MAPA) - 1, int(destino_y // GRID_SIZE)))
 
         if (inicio_col, inicio_lin) == (dest_col, dest_lin):
             return None
 
         fila = deque()
         visitados = {(inicio_col, inicio_lin)}
+        oposto = OPOSTOS.get(dir_atual)
 
         movs = [
             ("Cima", 0, -1),
             ("Baixo", 0, 1),
             ("Esquerda", -1, 0),
-            ("Direita", 1, 0)
+            ("Direita", 1, 0),
         ]
 
+        # Primeiro expande direções que não sejam o recuo imediato
         for d_nome, dc, dl in movs:
+            if d_nome == oposto:
+                continue
             nc, nl = inicio_col + dc, inicio_lin + dl
-            if 0 <= nl < len(MAPA) and 0 <= nc < len(MAPA[0]):
-                if MAPA[nl][nc] not in ("W", "G"):
-                    fila.append((nc, nl, d_nome))
-                    visitados.add((nc, nl))
+            if 0 <= nl < len(MAPA) and 0 <= nc < len(MAPA[0]) and MAPA[nl][nc] not in ("W", "G"):
+                fila.append((nc, nl, d_nome))
+                visitados.add((nc, nl))
+
+        # Se não houver nenhuma saída à frente/lados, permite recuar
+        if not fila and oposto:
+            for d_nome, dc, dl in movs:
+                if d_nome == oposto:
+                    nc, nl = inicio_col + dc, inicio_lin + dl
+                    if 0 <= nl < len(MAPA) and 0 <= nc < len(MAPA[0]) and MAPA[nl][nc] not in ("W", "G"):
+                        fila.append((nc, nl, d_nome))
+                        visitados.add((nc, nl))
 
         while fila:
             c, l, primeiro_passo = fila.popleft()
@@ -269,72 +325,74 @@ class PacmanGame:
             for d_nome, dc, dl in movs:
                 nc, nl = c + dc, l + dl
                 if 0 <= nl < len(MAPA) and 0 <= nc < len(MAPA[0]):
-                    if MAPA[nl][nc] not in ("W", "G"):
-                        if (nc, nl) not in visitados:
-                            visitados.add((nc, nl))
-                            fila.append((nc, nl, primeiro_passo))
+                    if MAPA[nl][nc] not in ("W", "G") and (nc, nl) not in visitados:
+                        visitados.add((nc, nl))
+                        fila.append((nc, nl, primeiro_passo))
         return None
 
     def atualizar_fantasmas_ia(self):
-        direcoes_possiveis = {
-            "Cima": (0, -self.velocidade),
-            "Baixo": (0, self.velocidade),
-            "Esquerda": (-self.velocidade, 0),
-            "Direita": (self.velocidade, 0)
-        }
+        alvos = {'blinky': (self.pacman_x, self.pacman_y)}
 
-        # Alvos estratégicos de cerco
-        alvos = {}
-        alvos['blinky'] = (self.pacman_x, self.pacman_y)  # Direto
-        
-        # Pinky: Antecipa 4 tiles à frente
         offset_frente = 4 * GRID_SIZE
         px, py = self.pacman_x, self.pacman_y
-        if self.direcao_atual == "Cima": py -= offset_frente
-        elif self.direcao_atual == "Baixo": py += offset_frente
-        elif self.direcao_atual == "Esquerda": px -= offset_frente
-        elif self.direcao_atual == "Direita": px += offset_frente
+        if self.direcao_atual == "Cima":
+            py -= offset_frente
+        elif self.direcao_atual == "Baixo":
+            py += offset_frente
+        elif self.direcao_atual == "Esquerda":
+            px -= offset_frente
+        elif self.direcao_atual == "Direita":
+            px += offset_frente
         alvos['pinky'] = (px, py)
-
-        # Inky: Flanco oposto
         alvos['inky'] = (self.pacman_x - (px - self.pacman_x), self.pacman_y - (py - self.pacman_y))
 
-        # Clyde: Dispersa se muito perto, caso contrário persegue
-        dist_clyde = ((self.fantasmas['clyde']['x'] - self.pacman_x)**2 + (self.fantasmas['clyde']['y'] - self.pacman_y)**2)**0.5
-        if dist_clyde < 4 * GRID_SIZE:
-            alvos['clyde'] = (0, ALTURA)
-        else:
-            alvos['clyde'] = (self.pacman_x, self.pacman_y)
+        dist_clyde = (
+            (self.fantasmas['clyde']['x'] - self.pacman_x) ** 2
+            + (self.fantasmas['clyde']['y'] - self.pacman_y) ** 2
+        ) ** 0.5
+        alvos['clyde'] = (0, ALTURA) if dist_clyde < 4 * GRID_SIZE else (self.pacman_x, self.pacman_y)
 
         for nome, f_data in self.fantasmas.items():
-            alvo_x, alvo_y = alvos[nome]
-            
-            # Tenta encontrar rota sem colisão por BFS
-            proximo_passo_nome = self.calcular_proximo_passo_bfs(f_data['x'], f_data['y'], alvo_x, alvo_y)
-            
-            if proximo_passo_nome and proximo_passo_nome in direcoes_possiveis:
-                dx, dy = direcoes_possiveis[proximo_passo_nome]
-                if self.pode_mover(f_data['x'] + dx, f_data['y'] + dy, self.tamanho):
-                    f_data['x'] += dx
-                    f_data['y'] += dy
-                    f_data['dir'] = proximo_passo_nome
-                    f_data['estado'] = f"BFS ({proximo_passo_nome})"
-                    continue
+            # Só toma nova decisão de rota ao alcançar o centro de uma célula
+            if self.no_centro_celula(f_data['x'], f_data['y'], tolerancia=1):
+                f_data['x'], f_data['y'] = self.alinhar_ao_centro(f_data['x'], f_data['y'])
+                alvo_x, alvo_y = alvos[nome]
 
-            # Fallback: Movimento aleatório seguro se o BFS falhar/estiver preso
-            f_data['estado'] = "Aleatório (Fallback)"
-            validos = [
-                (d, dx, dy) for d, (dx, dy) in direcoes_possiveis.items()
-                if self.pode_mover(f_data['x'] + dx, f_data['y'] + dy, self.tamanho)
-            ]
-            if validos:
-                d_nome, dx, dy = random.choice(validos)
+                proximo = self.calcular_proximo_passo_bfs(
+                    f_data['x'], f_data['y'], alvo_x, alvo_y, f_data['dir']
+                )
+
+                if proximo and self.pode_mover(f_data['x'], f_data['y'], proximo):
+                    f_data['dir'] = proximo
+                    f_data['estado'] = f"BFS ({proximo})"
+                else:
+                    # Escolhe apenas entre direções realmente livres (sem obstáculos)
+                    oposto = OPOSTOS.get(f_data['dir'])
+                    livres = [
+                        d for d in ("Cima", "Baixo", "Esquerda", "Direita")
+                        if self.pode_mover(f_data['x'], f_data['y'], d)
+                    ]
+                    sem_recuo = [d for d in livres if d != oposto]
+                    escolhas = sem_recuo if sem_recuo else livres
+
+                    if escolhas:
+                        f_data['dir'] = random.choice(escolhas)
+                        f_data['estado'] = f"Aleatório ({f_data['dir']})"
+                    else:
+                        f_data['estado'] = "Bloqueado"
+                        continue
+
+            # Avança somente se o caminho à frente continuar livre
+            if self.pode_mover(f_data['x'], f_data['y'], f_data['dir']):
+                dx, dy = self.obter_delta(f_data['dir'])
                 f_data['x'] += dx
                 f_data['y'] += dy
-                f_data['dir'] = d_nome
+
+            if TUNNEL_ROW * GRID_SIZE <= f_data['y'] < (TUNNEL_ROW + 1) * GRID_SIZE:
+                f_data['x'] = f_data['x'] % LARGURA
 
     def atualizar_posicao(self):
-        movendo, direcao_anterior = self.atualizar_posicao_pacman()
+        self.atualizar_posicao_pacman()
         self.atualizar_fantasmas_ia()
 
         self.frame += 1
@@ -390,7 +448,6 @@ class PacmanGame:
         }
         direcao_ingles_pac = dir_map.get(self.direcao_atual, "left")
 
-        # Correção do alinhamento: Subtrai metade do tile para ajustar perfeitamente ao topo-esquerdo do grid
         pos_pac = (
             (self.pacman_x - GRID_SIZE // 2) / GRID_SIZE,
             (self.pacman_y - GRID_SIZE // 2) / GRID_SIZE
