@@ -3,6 +3,7 @@ from collections import deque
 import pygame
 from menu import menu_principal
 from ia_logger import IALogger
+from character_renderer import CharacterRenderer
 
 # Inicialização do Pygame
 pygame.init()
@@ -17,8 +18,6 @@ LARANJA = (255, 165, 0)
 BRANCO = (245, 245, 245)
 AZUL = (25, 75, 225)
 AZUL_BRILHO = (65, 135, 255)
-AZUL_MEDO = (30, 144, 255)
-AZUL_PISCANDO = (240, 248, 255)
 ROSA_PORTAO = (255, 170, 210)
 VERDE = (46, 204, 113)
 
@@ -64,7 +63,7 @@ MAPA_ORIGINAL = [
 LARGURA = len(MAPA_ORIGINAL[0]) * GRID_SIZE
 ALTURA = len(MAPA_ORIGINAL) * GRID_SIZE
 TELA = pygame.display.set_mode((LARGURA, ALTURA))
-pygame.display.set_caption("Pac-Man — Jogo e IA")
+pygame.display.set_caption("Pac-Man — Jogo e IA com Gráficos Vetoriais")
 
 TUNNEL_ROW = 14
 OPOSTOS = {
@@ -119,7 +118,6 @@ class PacmanGame:
                 'estado': 'Iniciando',
                 'timer_saida': 0,
                 'dist_alvo': 0,
-                'cor_original': VERMELHO
             },
             'pinky': {
                 'x': self.posicoes_iniciais_fantasmas['pinky'][0],
@@ -128,7 +126,6 @@ class PacmanGame:
                 'estado': 'Na Casa',
                 'timer_saida': 15,
                 'dist_alvo': 0,
-                'cor_original': ROSA
             },
             'inky': {
                 'x': self.posicoes_iniciais_fantasmas['inky'][0],
@@ -137,7 +134,6 @@ class PacmanGame:
                 'estado': 'Na Casa',
                 'timer_saida': 30,
                 'dist_alvo': 0,
-                'cor_original': CIANO
             },
             'clyde': {
                 'x': self.posicoes_iniciais_fantasmas['clyde'][0],
@@ -146,7 +142,6 @@ class PacmanGame:
                 'estado': 'Na Casa',
                 'timer_saida': 45,
                 'dist_alvo': 0,
-                'cor_original': LARANJA
             }
         }
 
@@ -190,14 +185,10 @@ class PacmanGame:
                         self.debug_mode = not self.debug_mode
 
     def obter_delta(self, direcao):
-        if direcao == "Cima":
-            return 0, -self.velocidade
-        if direcao == "Baixo":
-            return 0, self.velocidade
-        if direcao == "Esquerda":
-            return -self.velocidade, 0
-        if direcao == "Direita":
-            return self.velocidade, 0
+        if direcao == "Cima": return 0, -self.velocidade
+        if direcao == "Baixo": return 0, self.velocidade
+        if direcao == "Esquerda": return -self.velocidade, 0
+        if direcao == "Direita": return self.velocidade, 0
         return 0, 0
 
     def celula_livre(self, col, lin, fantasma_dentro_casa=False):
@@ -205,51 +196,32 @@ class PacmanGame:
             return True
         if 0 <= lin < len(self.mapa) and 0 <= col < len(self.mapa[0]):
             char = self.mapa[lin][col]
-            if char == "W":
-                return False
-            if char == "G":
-                return fantasma_dentro_casa
+            if char == "W": return False
+            if char == "G": return fantasma_dentro_casa
             return True
         return False
 
     def pode_mover(self, x, y, direcao, fantasma_dentro_casa=False):
         dx, dy = self.obter_delta(direcao)
-        if dx == 0 and dy == 0:
-            return False
-
-        nx = x + dx
-        ny = y + dy
-
+        if dx == 0 and dy == 0: return False
+        nx, ny = x + dx, y + dy
         raio = GRID_SIZE // 2 - 1
-        if direcao == "Cima":
-            check_x, check_y = nx, ny - raio
-        elif direcao == "Baixo":
-            check_x, check_y = nx, ny + raio
-        elif direcao == "Esquerda":
-            check_x, check_y = nx - raio, ny
-        else:
-            check_x, check_y = nx + raio, ny
-
-        col = int(check_x // GRID_SIZE)
-        lin = int(check_y // GRID_SIZE)
-        return self.celula_livre(col, lin, fantasma_dentro_casa)
+        if direcao == "Cima": check_x, check_y = nx, ny - raio
+        elif direcao == "Baixo": check_x, check_y = nx, ny + raio
+        elif direcao == "Esquerda": check_x, check_y = nx - raio, ny
+        else: check_x, check_y = nx + raio, ny
+        return self.celula_livre(int(check_x // GRID_SIZE), int(check_y // GRID_SIZE), fantasma_dentro_casa)
 
     def no_centro_celula(self, x, y, tolerancia=2):
-        col = int(x // GRID_SIZE)
-        lin = int(y // GRID_SIZE)
-        centro_x = col * GRID_SIZE + GRID_SIZE // 2
-        centro_y = lin * GRID_SIZE + GRID_SIZE // 2
-        return abs(x - centro_x) <= tolerancia and abs(y - centro_y) <= tolerancia
+        col, lin = int(x // GRID_SIZE), int(y // GRID_SIZE)
+        return abs(x - (col * GRID_SIZE + GRID_SIZE // 2)) <= tolerancia and abs(y - (lin * GRID_SIZE + GRID_SIZE // 2)) <= tolerancia
 
     def alinhar_ao_centro(self, x, y):
-        col = int(x // GRID_SIZE)
-        lin = int(y // GRID_SIZE)
+        col, lin = int(x // GRID_SIZE), int(y // GRID_SIZE)
         return col * GRID_SIZE + GRID_SIZE // 2, lin * GRID_SIZE + GRID_SIZE // 2
 
     def verificar_coleta_pontos(self):
-        col = int(self.pacman_x // GRID_SIZE)
-        lin = int(self.pacman_y // GRID_SIZE)
-        
+        col, lin = int(self.pacman_x // GRID_SIZE), int(self.pacman_y // GRID_SIZE)
         if 0 <= lin < len(self.mapa) and 0 <= col < len(self.mapa[0]):
             item = self.mapa[lin][col]
             if item == ".":
@@ -266,26 +238,22 @@ class PacmanGame:
 
     def verificar_colisoes_fantasmas(self):
         for nome, f_data in self.fantasmas.items():
-            distancia = ((self.pacman_x - f_data['x']) ** 2 + (self.pacman_y - f_data['y']) ** 2) ** 0.5
-            if distancia < GRID_SIZE * 0.8:
+            if ((self.pacman_x - f_data['x']) ** 2 + (self.pacman_y - f_data['y']) ** 2) ** 0.5 < GRID_SIZE * 0.8:
                 if self.modo_medo_ativo:
                     self.pontuacao += 200
-                    pos_inicial = self.posicoes_iniciais_fantasmas[nome]
-                    f_data['x'], f_data['y'] = pos_inicial
+                    f_data['x'], f_data['y'] = self.posicoes_iniciais_fantasmas[nome]
                     f_data['dir'] = 'Cima'
                     f_data['timer_saida'] = self.frame + 10
                     f_data['estado'] = "Comido (Respawn)"
                 else:
                     self.morreu = True
-                    self.pos_morte_x = self.pacman_x
-                    self.pos_morte_y = self.pacman_y
+                    self.pos_morte_x, self.pos_morte_y = self.pacman_x, self.pacman_y
                     self.rodando = False
                     self.retornar_menu = True
 
     def atualizar_posicao_pacman(self):
         if self.proxima_direcao != "Parado" and self.proxima_direcao != self.direcao_atual:
-            eh_oposto = OPOSTOS.get(self.direcao_atual) == self.proxima_direcao
-            if eh_oposto and self.pode_mover(self.pacman_x, self.pacman_y, self.proxima_direcao):
+            if OPOSTOS.get(self.direcao_atual) == self.proxima_direcao and self.pode_mover(self.pacman_x, self.pacman_y, self.proxima_direcao):
                 self.direcao_atual = self.proxima_direcao
             elif self.no_centro_celula(self.pacman_x, self.pacman_y):
                 cx, cy = self.alinhar_ao_centro(self.pacman_x, self.pacman_y)
@@ -309,54 +277,30 @@ class PacmanGame:
         self.verificar_colisoes_fantasmas()
 
     def calcular_proximo_passo_bfs(self, inicio_x, inicio_y, destino_x, destino_y, dir_atual, dentro_casa=False):
-        inicio_col = max(0, min(len(self.mapa[0]) - 1, int(inicio_x // GRID_SIZE)))
-        inicio_lin = max(0, min(len(self.mapa) - 1, int(inicio_y // GRID_SIZE)))
-        dest_col = max(0, min(len(self.mapa[0]) - 1, int(destino_x // GRID_SIZE)))
-        dest_lin = max(0, min(len(self.mapa) - 1, int(destino_y // GRID_SIZE)))
-
-        if (inicio_col, inicio_lin) == (dest_col, dest_lin):
-            return None
+        inicio_col, inicio_lin = int(inicio_x // GRID_SIZE), int(inicio_y // GRID_SIZE)
+        dest_col, dest_lin = int(destino_x // GRID_SIZE), int(destino_y // GRID_SIZE)
+        if (inicio_col, inicio_lin) == (dest_col, dest_lin): return None
 
         fila = deque()
         visitados = {(inicio_col, inicio_lin)}
         oposto = OPOSTOS.get(dir_atual)
-
-        movs = [
-            ("Cima", 0, -1),
-            ("Baixo", 0, 1),
-            ("Esquerda", -1, 0),
-            ("Direita", 1, 0),
-        ]
+        movs = [("Cima", 0, -1), ("Baixo", 0, 1), ("Esquerda", -1, 0), ("Direita", 1, 0)]
 
         for d_nome, dc, dl in movs:
-            if d_nome == oposto:
-                continue
+            if d_nome == oposto: continue
             nc, nl = inicio_col + dc, inicio_lin + dl
-            if 0 <= nl < len(self.mapa) and 0 <= nc < len(self.mapa[0]):
-                if self.celula_livre(nc, nl, dentro_casa):
-                    fila.append((nc, nl, d_nome))
-                    visitados.add((nc, nl))
-
-        if not fila and oposto:
-            for d_nome, dc, dl in movs:
-                if d_nome == oposto:
-                    nc, nl = inicio_col + dc, inicio_lin + dl
-                    if 0 <= nl < len(self.mapa) and 0 <= nc < len(self.mapa[0]):
-                        if self.celula_livre(nc, nl, dentro_casa):
-                            fila.append((nc, nl, d_nome))
-                            visitados.add((nc, nl))
+            if 0 <= nl < len(self.mapa) and 0 <= nc < len(self.mapa[0]) and self.celula_livre(nc, nl, dentro_casa):
+                fila.append((nc, nl, d_nome))
+                visitados.add((nc, nl))
 
         while fila:
             c, l, primeiro_passo = fila.popleft()
-            if (c, l) == (dest_col, dest_lin):
-                return primeiro_passo
-
+            if (c, l) == (dest_col, dest_lin): return primeiro_passo
             for d_nome, dc, dl in movs:
                 nc, nl = c + dc, l + dl
-                if 0 <= nl < len(self.mapa) and 0 <= nc < len(self.mapa[0]):
-                    if self.celula_livre(nc, nl, dentro_casa) and (nc, nl) not in visitados:
-                        visitados.add((nc, nl))
-                        fila.append((nc, nl, primeiro_passo))
+                if 0 <= nl < len(self.mapa) and 0 <= nc < len(self.mapa[0]) and self.celula_livre(nc, nl, dentro_casa) and (nc, nl) not in visitados:
+                    visitados.add((nc, nl))
+                    fila.append((nc, nl, primeiro_passo))
         return None
 
     def atualizar_fantasmas_ia(self):
@@ -367,31 +311,8 @@ class PacmanGame:
                 self.velocidade = self.velocidade_normal
 
         px, py = self.pacman_x, self.pacman_y
-
-        alvo_blinky = (px, py)
-        offset = 4 * GRID_SIZE
-        p_frente_x, p_frente_y = px, py
-        if self.direcao_atual == "Cima": p_frente_y -= offset
-        elif self.direcao_atual == "Baixo": p_frente_y += offset
-        elif self.direcao_atual == "Esquerda": p_frente_x -= offset
-        elif self.direcao_atual == "Direita": p_frente_x += offset
-        alvo_pinky = (p_frente_x, p_frente_y)
-
-        bx, by = self.fantasmas['blinky']['x'], self.fantasmas['blinky']['y']
-        alvo_inky = (px - (bx - px), py - (by - py))
-
-        dist_clyde = ((self.fantasmas['clyde']['x'] - px) ** 2 + (self.fantasmas['clyde']['y'] - py) ** 2) ** 0.5
-        alvo_clyde = (GRID_SIZE * 2, ALTURA - GRID_SIZE * 2) if dist_clyde < 5 * GRID_SIZE else (px, py)
-
-        alvos_perseguicao = {
-            'blinky': (alvo_blinky, "Ataque Direto"),
-            'pinky': (alvo_pinky, "Interceptando Frente"),
-            'inky': (alvo_inky, "Flanco Cruzado"),
-            'clyde': (alvo_clyde, "Cerco Retaguarda")
-        }
-
         for nome, f_data in self.fantasmas.items():
-            lin_atual = max(0, min(len(self.mapa) - 1, int(f_data['y'] // GRID_SIZE)))
+            lin_atual = int(f_data['y'] // GRID_SIZE)
             dentro_casa = 12 <= lin_atual <= 14
 
             if dentro_casa:
@@ -404,36 +325,21 @@ class PacmanGame:
                 alvo_x, alvo_y = self.centro_casa_fantasmas
                 f_data['estado'] = "Fuginho p/ Casa 😨"
             else:
-                tempo_fora = self.frame - f_data['timer_saida']
-                if tempo_fora < 90:
-                    alvo_x, alvo_y = self.cantos_dispersao[nome]
-                    f_data['estado'] = "Dispersão Inicial"
-                else:
-                    par_alvo, estrategia = alvos_perseguicao[nome]
-                    alvo_x, alvo_y = par_alvo
-                    f_data['estado'] = f"{estrategia}"
+                alvo_x, alvo_y = px, py
+                f_data['estado'] = "Perseguição"
 
             f_data['dist_alvo'] = int(((f_data['x'] - alvo_x) ** 2 + (f_data['y'] - alvo_y) ** 2) ** 0.5)
 
             if self.no_centro_celula(f_data['x'], f_data['y'], tolerancia=1):
                 f_data['x'], f_data['y'] = self.alinhar_ao_centro(f_data['x'], f_data['y'])
-
-                proximo = self.calcular_proximo_passo_bfs(
-                    f_data['x'], f_data['y'], alvo_x, alvo_y, f_data['dir'], dentro_casa
-                )
-
+                proximo = self.calcular_proximo_passo_bfs(f_data['x'], f_data['y'], alvo_x, alvo_y, f_data['dir'], dentro_casa)
                 if proximo and self.pode_mover(f_data['x'], f_data['y'], proximo, dentro_casa):
                     f_data['dir'] = proximo
                 else:
                     oposto = OPOSTOS.get(f_data['dir'])
-                    livres = [
-                        d for d in ("Cima", "Baixo", "Esquerda", "Direita")
-                        if self.pode_mover(f_data['x'], f_data['y'], d, dentro_casa)
-                    ]
-                    sem_recuo = [d for d in livres if d != oposto]
-                    escolhas = sem_recuo if sem_recuo else livres
-                    if escolhas:
-                        f_data['dir'] = random.choice(escolhas)
+                    livres = [d for d in ("Cima", "Baixo", "Esquerda", "Direita") if self.pode_mover(f_data['x'], f_data['y'], d, dentro_casa)]
+                    escolhas = [d for d in livres if d != oposto] or livres
+                    if escolhas: f_data['dir'] = random.choice(escolhas)
 
             if self.pode_mover(f_data['x'], f_data['y'], f_data['dir'], dentro_casa):
                 dx, dy = self.obter_delta(f_data['dir'])
@@ -444,132 +350,77 @@ class PacmanGame:
                 f_data['x'] = f_data['x'] % LARGURA
 
     def atualizar_posicao(self):
-        if self.pausado:
-            return
-
+        if self.pausado: return
         self.atualizar_posicao_pacman()
-        if not self.rodando:
-            return
-
+        if not self.rodando: return
         self.atualizar_fantasmas_ia()
-
         self.frame += 1
         
-        registro = {
-            "frame": self.frame,
-            "jogador": self.nome_jogador,
-            "pontuacao": self.pontuacao,
-            "modo_medo": self.modo_medo_ativo,
-            "pacman_x": self.pacman_x,
-            "pacman_y": self.pacman_y,
-            "blinky_x": self.fantasmas['blinky']['x'],
-            "blinky_y": self.fantasmas['blinky']['y'],
-            "pinky_x": self.fantasmas['pinky']['x'],
-            "pinky_y": self.fantasmas['pinky']['y'],
-            "inky_x": self.fantasmas['inky']['x'],
-            "inky_y": self.fantasmas['inky']['y'],
-            "clyde_x": self.fantasmas['clyde']['x'],
-            "clyde_y": self.fantasmas['clyde']['y'],
-            "ia_sucesso_captura": 0,
-            "pos_morte_x": "",
-            "pos_morte_y": ""
-        }
-        self.dados_telemetria.append(registro)
+        self.dados_telemetria.append({
+            "frame": self.frame, "jogador": self.nome_jogador, "pontuacao": self.pontuacao,
+            "modo_medo": self.modo_medo_ativo, "pacman_x": self.pacman_x, "pacman_y": self.pacman_y,
+            "blinky_x": self.fantasmas['blinky']['x'], "blinky_y": self.fantasmas['blinky']['y'],
+            "pinky_x": self.fantasmas['pinky']['x'], "pinky_y": self.fantasmas['pinky']['y'],
+            "inky_x": self.fantasmas['inky']['x'], "inky_y": self.fantasmas['inky']['y'],
+            "clyde_x": self.fantasmas['clyde']['x'], "clyde_y": self.fantasmas['clyde']['y'],
+            "ia_sucesso_captura": 0, "pos_morte_x": "", "pos_morte_y": ""
+        })
 
     def desenhar_tabuleiro(self, superficie):
         for linha_idx, linha in enumerate(self.mapa):
             for coluna_idx, caractere in enumerate(linha):
-                x = coluna_idx * GRID_SIZE
-                y = linha_idx * GRID_SIZE
-
+                x, y = coluna_idx * GRID_SIZE, linha_idx * GRID_SIZE
                 if caractere == "W":
                     rect = pygame.Rect(x, y, GRID_SIZE, GRID_SIZE)
                     pygame.draw.rect(superficie, AZUL, rect)
-                    inset = max(2, GRID_SIZE // 9)
-                    inner = rect.inflate(-inset * 2, -inset * 2)
-                    pygame.draw.rect(
-                        superficie, AZUL_BRILHO, inner,
-                        width=1, border_radius=4,
-                    )
+                    pygame.draw.rect(superficie, AZUL_BRILHO, rect.inflate(-4, -4), width=1, border_radius=4)
                 elif caractere == ".":
-                    cx = x + GRID_SIZE // 2
-                    cy = y + GRID_SIZE // 2
-                    pygame.draw.circle(
-                        superficie, AMARELO, (cx, cy),
-                        max(2, GRID_SIZE // 10),
-                    )
+                    pygame.draw.circle(superficie, AMARELO, (x + GRID_SIZE // 2, y + GRID_SIZE // 2), max(2, GRID_SIZE // 10))
                 elif caractere == "O":
-                    cx = x + GRID_SIZE // 2
-                    cy = y + GRID_SIZE // 2
-                    pygame.draw.circle(
-                        superficie, (255, 255, 245), (cx, cy),
-                        max(4, GRID_SIZE // 4),
-                    )
+                    pygame.draw.circle(superficie, (255, 255, 245), (x + GRID_SIZE // 2, y + GRID_SIZE // 2), max(4, GRID_SIZE // 4))
                 elif caractere == "G":
-                    pygame.draw.line(
-                        superficie, ROSA_PORTAO,
-                        (x + 2, y + GRID_SIZE // 2),
-                        (x + GRID_SIZE - 2, y + GRID_SIZE // 2),
-                        3,
-                    )
+                    pygame.draw.line(superficie, ROSA_PORTAO, (x + 2, y + GRID_SIZE // 2), (x + GRID_SIZE - 2, y + GRID_SIZE // 2), 3)
 
     def desenhar_debug(self):
-        if not self.debug_mode:
-            return
-
+        if not self.debug_mode: return
         font = pygame.font.Font(None, 16)
-        tempo_seg = round(self.frame / FPS, 1)
-        tempo_medo_seg = round(self.timer_medo / FPS, 1) if self.modo_medo_ativo else 0.0
-        status_medo = f" | 😨 MEDO: {tempo_medo_seg}s" if self.modo_medo_ativo else ""
-        status_pause = " [PAUSADO - ESPAÇO]" if self.pausado else ""
-
-        linhas_debug = [
-            f"[JOGADOR: {self.nome_jogador} | PONTOS: {self.pontuacao} | TEMPO: {tempo_seg}s{status_medo}{status_pause}]",
+        linhas = [
+            f"[JOGADOR: {self.nome_jogador} | PONTOS: {self.pontuacao} | TEMPO: {round(self.frame/FPS, 1)}s]",
             f"Blinky: {self.fantasmas['blinky']['estado']} | Dist: {self.fantasmas['blinky']['dist_alvo']}px",
             f"Pinky:  {self.fantasmas['pinky']['estado']} | Dist: {self.fantasmas['pinky']['dist_alvo']}px",
             f"Inky:   {self.fantasmas['inky']['estado']} | Dist: {self.fantasmas['inky']['dist_alvo']}px",
             f"Clyde:  {self.fantasmas['clyde']['estado']} | Dist: {self.fantasmas['clyde']['dist_alvo']}px",
         ]
-
-        box_width = 440
-        box_height = 22 + len(linhas_debug) * 16
-        debug_surface = pygame.Surface((box_width, box_height), pygame.SRCALPHA)
-        debug_surface.fill((10, 10, 30, 230))
-        pygame.draw.rect(debug_surface, (65, 135, 255), debug_surface.get_rect(), 1, border_radius=4)
-
-        for idx, texto in enumerate(linhas_debug):
-            color = (255, 215, 0) if idx == 0 else (245, 245, 245)
-            txt_surface = font.render(texto, True, color)
-            debug_surface.blit(txt_surface, (8, 6 + idx * 16))
-
-        pos_x = 10
-        if self.pacman_y < (ALTURA / 2):
-            pos_y = ALTURA - box_height - 10
-        else:
-            pos_y = 10
-
-        TELA.blit(debug_surface, (pos_x, pos_y))
+        box_surface = pygame.Surface((440, 22 + len(linhas) * 16), pygame.SRCALPHA)
+        box_surface.fill((10, 10, 30, 230))
+        pygame.draw.rect(box_surface, (65, 135, 255), box_surface.get_rect(), 1, border_radius=4)
+        for idx, txt in enumerate(linhas):
+            box_surface.blit(font.render(txt, True, (255, 215, 0) if idx == 0 else (245, 245, 245)), (8, 6 + idx * 16))
+        TELA.blit(box_surface, (10, ALTURA - box_surface.get_height() - 10 if self.pacman_y < ALTURA / 2 else 10))
 
     def desenhar(self):
         TELA.fill(PRETO)
         self.desenhar_tabuleiro(TELA)
 
-        pygame.draw.circle(TELA, AMARELO, (int(self.pacman_x), int(self.pacman_y)), self.tamanho // 2)
+        # 🌟 PAC-MAN (Convertendo pixel central para célula correta do renderizador)
+        pac_cell_x = (self.pacman_x - GRID_SIZE // 2) / GRID_SIZE
+        pac_cell_y = (self.pacman_y - GRID_SIZE // 2) / GRID_SIZE
+        CharacterRenderer.draw_pacman(
+            TELA, pygame, 
+            (pac_cell_x, pac_cell_y), 
+            GRID_SIZE, direction=self.direcao_atual, frame=self.frame
+        )
 
+        # 🌟 FANTASMAS (Convertendo pixel central para célula correta do renderizador)
         for nome, f_data in self.fantasmas.items():
-            fx, fy = int(f_data['x']), int(f_data['y'])
-            
-            if self.modo_medo_ativo:
-                if self.timer_medo < 60 and (self.frame // 6) % 2 == 0:
-                    cor_fantasma = AZUL_PISCANDO
-                else:
-                    cor_fantasma = AZUL_MEDO
-            else:
-                cor_fantasma = f_data['cor_original']
-
-            pygame.draw.circle(TELA, cor_fantasma, (fx, fy), self.tamanho // 2)
-            pygame.draw.circle(TELA, BRANCO, (fx - 3, fy - 2), 3)
-            pygame.draw.circle(TELA, BRANCO, (fx + 3, fy - 2), 3)
+            f_cell_x = (f_data['x'] - GRID_SIZE // 2) / GRID_SIZE
+            f_cell_y = (f_data['y'] - GRID_SIZE // 2) / GRID_SIZE
+            CharacterRenderer.draw_ghost(
+                TELA, pygame,
+                (f_cell_x, f_cell_y),
+                GRID_SIZE, name=nome, direction=f_data['dir'],
+                frightened=self.modo_medo_ativo, frame=self.frame
+            )
 
         self.desenhar_debug()
         pygame.display.flip()
@@ -590,15 +441,12 @@ class PacmanGame:
             )
             return self.retornar_menu
 
-
 def main():
     while True:
         nome_jogador = menu_principal(TELA, LARGURA)
         jogo = PacmanGame(nome_jogador)
         voltar = jogo.executar()
-        if not voltar:
-            break
-
+        if not voltar: break
 
 if __name__ == "__main__":
     main()
