@@ -1,6 +1,7 @@
 import random
 from collections import deque
 import pygame
+
 from menu import menu_principal
 from ia_logger import IALogger
 from character_renderer import CharacterRenderer
