@@ -33,7 +33,7 @@ MAPA = [
     "W..........................W",  # 5
     "W.WWWW.WW.WWWWWWWW.WW.WWWW.W",  # 6
     "W.WWWW.WW.WWWWWWWW.WW.WWWW.W",  # 7
-    "W......WW....WW....WW......W",  # 8
+    "W......WW....WW    WW......W",  # 8
     "WWWWWW.WWWWW WW WWWWW.WWWWWW",  # 9
     "     W.WWWWW WW WWWWW.W     ",  # 10
     "     W.WW          WW.W     ",  # 11
@@ -64,7 +64,7 @@ for i, linha in enumerate(MAPA):
 LARGURA = len(MAPA[0]) * GRID_SIZE
 ALTURA = len(MAPA) * GRID_SIZE
 TELA = pygame.display.set_mode((LARGURA, ALTURA))
-pygame.display.set_caption("Pac-Man — Movimentação Fluida Sem Flick")
+pygame.display.set_caption("Pac-Man — IA com Dispersão e Cerco")
 
 TUNNEL_ROW = 14
 OPOSTOS = {
@@ -132,38 +132,50 @@ class PacmanGame:
                     self.pacman_y = l_idx * GRID_SIZE + GRID_SIZE // 2
                     break
 
-        # Divisor exato de GRID_SIZE (20) garante alinhamento exato no centro das células
         self.velocidade = 2
         self.tamanho = 18
         self.direcao_atual = "Parado"
         self.proxima_direcao = "Parado"
         self.paredes = Paredes
 
+        # Posições iniciais dentro/perto da Ghost House
         self.fantasmas = {
             'blinky': {
                 'x': 13 * GRID_SIZE + GRID_SIZE // 2,
                 'y': 11 * GRID_SIZE + GRID_SIZE // 2,
                 'dir': 'Esquerda',
-                'estado': 'BFS Direto'
+                'estado': 'Dispersão',
+                'timer_saida': 0
             },
             'pinky': {
                 'x': 13 * GRID_SIZE + GRID_SIZE // 2,
                 'y': 14 * GRID_SIZE + GRID_SIZE // 2,
-                'dir': 'Esquerda',
-                'estado': 'BFS Antecipado'
+                'dir': 'Cima',
+                'estado': 'Saindo da Casa',
+                'timer_saida': 30  # Atraso em frames para saírem escalonados
             },
             'inky': {
                 'x': 12 * GRID_SIZE + GRID_SIZE // 2,
                 'y': 14 * GRID_SIZE + GRID_SIZE // 2,
-                'dir': 'Direita',
-                'estado': 'BFS Flanco'
+                'dir': 'Cima',
+                'estado': 'Saindo da Casa',
+                'timer_saida': 60
             },
             'clyde': {
                 'x': 15 * GRID_SIZE + GRID_SIZE // 2,
                 'y': 14 * GRID_SIZE + GRID_SIZE // 2,
-                'dir': 'Esquerda',
-                'estado': 'BFS / Dispersão'
+                'dir': 'Cima',
+                'estado': 'Saindo da Casa',
+                'timer_saida': 90
             }
+        }
+
+        # Cantos fixos de dispersão inicial para cada fantasma ao saírem (estilo clássico Scatter)
+        self.cantos_dispersao = {
+            'blinky': (LARGURA - 2 * GRID_SIZE, GRID_SIZE),      # Canto superior direito
+            'pinky': (2 * GRID_SIZE, GRID_SIZE),                 # Canto superior esquerdo
+            'inky': (LARGURA - 2 * GRID_SIZE, ALTURA - GRID_SIZE), # Canto inferior direito
+            'clyde': (2 * GRID_SIZE, ALTURA - GRID_SIZE)         # Canto inferior esquerdo
         }
 
         self.dados_telemetria = []
@@ -198,16 +210,19 @@ class PacmanGame:
             return self.velocidade, 0
         return 0, 0
 
-    def celula_livre(self, col, lin):
-        """Verifica se a célula do mapa está livre de obstáculos ('W' ou 'G')."""
+    def celula_livre(self, col, lin, fantasma_dentro_casa=False):
         if lin == TUNNEL_ROW and (col < 0 or col >= len(MAPA[0])):
             return True
         if 0 <= lin < len(MAPA) and 0 <= col < len(MAPA[0]):
-            return MAPA[lin][col] not in ("W", "G")
+            char = MAPA[lin][col]
+            if char == "W":
+                return False
+            if char == "G":
+                return fantasma_dentro_casa
+            return True
         return False
 
-    def pode_mover(self, x, y, direcao):
-        """Verifica se o próximo passo na direção informada não entra em célula bloqueada."""
+    def pode_mover(self, x, y, direcao, fantasma_dentro_casa=False):
         dx, dy = self.obter_delta(direcao)
         if dx == 0 and dy == 0:
             return False
@@ -215,7 +230,6 @@ class PacmanGame:
         nx = x + dx
         ny = y + dy
 
-        # Borda frontal do personagem (meia célula - 1px de folga)
         raio = GRID_SIZE // 2 - 1
         if direcao == "Cima":
             check_x, check_y = nx, ny - raio
@@ -223,15 +237,14 @@ class PacmanGame:
             check_x, check_y = nx, ny + raio
         elif direcao == "Esquerda":
             check_x, check_y = nx - raio, ny
-        else:  # Direita
+        else:
             check_x, check_y = nx + raio, ny
 
         col = int(check_x // GRID_SIZE)
         lin = int(check_y // GRID_SIZE)
-        return self.celula_livre(col, lin)
+        return self.celula_livre(col, lin, fantasma_dentro_casa)
 
     def no_centro_celula(self, x, y, tolerancia=2):
-        """Retorna True se (x, y) está alinhado ao centro da célula atual."""
         col = int(x // GRID_SIZE)
         lin = int(y // GRID_SIZE)
         centro_x = col * GRID_SIZE + GRID_SIZE // 2
@@ -239,7 +252,6 @@ class PacmanGame:
         return abs(x - centro_x) <= tolerancia and abs(y - centro_y) <= tolerancia
 
     def alinhar_ao_centro(self, x, y):
-        """Ajusta exatamente ao centro da célula para evitar engasgos nas quinas."""
         col = int(x // GRID_SIZE)
         lin = int(y // GRID_SIZE)
         return col * GRID_SIZE + GRID_SIZE // 2, lin * GRID_SIZE + GRID_SIZE // 2
@@ -248,20 +260,16 @@ class PacmanGame:
         movendo = False
         direcao_anterior = self.direcao_atual
 
-        # 1. Tenta aplicar a direção desejada (buffer de entrada)
         if self.proxima_direcao != "Parado" and self.proxima_direcao != self.direcao_atual:
             eh_oposto = OPOSTOS.get(self.direcao_atual) == self.proxima_direcao
             if eh_oposto and self.pode_mover(self.pacman_x, self.pacman_y, self.proxima_direcao):
-                # Inversão de 180° no mesmo corredor é imediata
                 self.direcao_atual = self.proxima_direcao
             elif self.no_centro_celula(self.pacman_x, self.pacman_y):
-                # Curva de 90° só acontece se o corredor perpendicular estiver livre
                 cx, cy = self.alinhar_ao_centro(self.pacman_x, self.pacman_y)
                 if self.pode_mover(cx, cy, self.proxima_direcao):
                     self.pacman_x, self.pacman_y = cx, cy
                     self.direcao_atual = self.proxima_direcao
 
-        # 2. Move apenas se a direção atual estiver livre de obstáculos
         if self.direcao_atual != "Parado":
             if self.pode_mover(self.pacman_x, self.pacman_y, self.direcao_atual):
                 dx, dy = self.obter_delta(self.direcao_atual)
@@ -269,7 +277,6 @@ class PacmanGame:
                 self.pacman_y += dy
                 movendo = True
             else:
-                # Encosta perfeitamente no centro da célula antes da parede, sem flicar
                 self.pacman_x, self.pacman_y = self.alinhar_ao_centro(self.pacman_x, self.pacman_y)
                 self.direcao_atual = "Parado"
 
@@ -278,8 +285,7 @@ class PacmanGame:
 
         return movendo, direcao_anterior
 
-    def calcular_proximo_passo_bfs(self, inicio_x, inicio_y, destino_x, destino_y, dir_atual):
-        """Calcula rota livre de colisão pelo grid, evitando inversão brusca de 180°."""
+    def calcular_proximo_passo_bfs(self, inicio_x, inicio_y, destino_x, destino_y, dir_atual, dentro_casa=False):
         inicio_col = int(inicio_x // GRID_SIZE)
         inicio_lin = int(inicio_y // GRID_SIZE)
         dest_col = max(0, min(len(MAPA[0]) - 1, int(destino_x // GRID_SIZE)))
@@ -299,23 +305,23 @@ class PacmanGame:
             ("Direita", 1, 0),
         ]
 
-        # Primeiro expande direções que não sejam o recuo imediato
         for d_nome, dc, dl in movs:
             if d_nome == oposto:
                 continue
             nc, nl = inicio_col + dc, inicio_lin + dl
-            if 0 <= nl < len(MAPA) and 0 <= nc < len(MAPA[0]) and MAPA[nl][nc] not in ("W", "G"):
-                fila.append((nc, nl, d_nome))
-                visitados.add((nc, nl))
+            if 0 <= nl < len(MAPA) and 0 <= nc < len(MAPA[0]):
+                if self.celula_livre(nc, nl, dentro_casa):
+                    fila.append((nc, nl, d_nome))
+                    visitados.add((nc, nl))
 
-        # Se não houver nenhuma saída à frente/lados, permite recuar
         if not fila and oposto:
             for d_nome, dc, dl in movs:
                 if d_nome == oposto:
                     nc, nl = inicio_col + dc, inicio_lin + dl
-                    if 0 <= nl < len(MAPA) and 0 <= nc < len(MAPA[0]) and MAPA[nl][nc] not in ("W", "G"):
-                        fila.append((nc, nl, d_nome))
-                        visitados.add((nc, nl))
+                    if 0 <= nl < len(MAPA) and 0 <= nc < len(MAPA[0]):
+                        if self.celula_livre(nc, nl, dentro_casa):
+                            fila.append((nc, nl, d_nome))
+                            visitados.add((nc, nl))
 
         while fila:
             c, l, primeiro_passo = fila.popleft()
@@ -325,65 +331,81 @@ class PacmanGame:
             for d_nome, dc, dl in movs:
                 nc, nl = c + dc, l + dl
                 if 0 <= nl < len(MAPA) and 0 <= nc < len(MAPA[0]):
-                    if MAPA[nl][nc] not in ("W", "G") and (nc, nl) not in visitados:
+                    if self.celula_livre(nc, nl, dentro_casa) and (nc, nl) not in visitados:
                         visitados.add((nc, nl))
                         fila.append((nc, nl, primeiro_passo))
         return None
 
     def atualizar_fantasmas_ia(self):
-        alvos = {'blinky': (self.pacman_x, self.pacman_y)}
-
-        offset_frente = 4 * GRID_SIZE
         px, py = self.pacman_x, self.pacman_y
-        if self.direcao_atual == "Cima":
-            py -= offset_frente
-        elif self.direcao_atual == "Baixo":
-            py += offset_frente
-        elif self.direcao_atual == "Esquerda":
-            px -= offset_frente
-        elif self.direcao_atual == "Direita":
-            px += offset_frente
-        alvos['pinky'] = (px, py)
-        alvos['inky'] = (self.pacman_x - (px - self.pacman_x), self.pacman_y - (py - self.pacman_y))
 
-        dist_clyde = (
-            (self.fantasmas['clyde']['x'] - self.pacman_x) ** 2
-            + (self.fantasmas['clyde']['y'] - self.pacman_y) ** 2
-        ) ** 0.5
-        alvos['clyde'] = (0, ALTURA) if dist_clyde < 4 * GRID_SIZE else (self.pacman_x, self.pacman_y)
+        # Alvos para o cerco coordenado pós-dispersão
+        alvo_blinky = (px, py)
+        offset = 4 * GRID_SIZE
+        p_frente_x, p_frente_y = px, py
+        if self.direcao_atual == "Cima": p_frente_y -= offset
+        elif self.direcao_atual == "Baixo": p_frente_y += offset
+        elif self.direcao_atual == "Esquerda": p_frente_x -= offset
+        elif self.direcao_atual == "Direita": p_frente_x += offset
+        alvo_pinky = (p_frente_x, p_frente_y)
+
+        bx, by = self.fantasmas['blinky']['x'], self.fantasmas['blinky']['y']
+        alvo_inky = (px - (bx - px), py - (by - py))
+
+        dist_clyde = ((self.fantasmas['clyde']['x'] - px) ** 2 + (self.fantasmas['clyde']['y'] - py) ** 2) ** 0.5
+        alvo_clyde = (GRID_SIZE * 2, ALTURA - GRID_SIZE * 2) if dist_clyde < 4 * GRID_SIZE else (px, py)
+
+        alvos_perseguicao = {
+            'blinky': alvo_blinky,
+            'pinky': alvo_pinky,
+            'inky': alvo_inky,
+            'clyde': alvo_clyde
+        }
 
         for nome, f_data in self.fantasmas.items():
-            # Só toma nova decisão de rota ao alcançar o centro de uma célula
+            lin_atual = int(f_data['y'] // GRID_SIZE)
+            dentro_casa = 12 <= lin_atual <= 14
+
+            # Gerencia o tempo de saída da casa
+            if dentro_casa:
+                if self.frame < f_data['timer_saida']:
+                    continue # Aguarda o seu momento de sair
+                # Direciona para a saída da casa (y = 11)
+                alvo_x = 13 * GRID_SIZE + GRID_SIZE // 2
+                alvo_y = 11 * GRID_SIZE + GRID_SIZE // 2
+                f_data['estado'] = "Saindo da Casa"
+            else:
+                # ACABOU DE SAIR: Vai primeiro para o seu canto de dispersão (primeiros 150 frames fora da casa)
+                tempo_fora = self.frame - f_data['timer_saida']
+                if tempo_fora < 180:
+                    alvo_x, alvo_y = self.cantos_dispersao[nome]
+                    f_data['estado'] = "Dispersão (Separando)"
+                else:
+                    # Rota normal de cerco e perseguição coordenada
+                    alvo_x, alvo_y = alvos_perseguicao[nome]
+                    f_data['estado'] = f"Cercando"
+
             if self.no_centro_celula(f_data['x'], f_data['y'], tolerancia=1):
                 f_data['x'], f_data['y'] = self.alinhar_ao_centro(f_data['x'], f_data['y'])
-                alvo_x, alvo_y = alvos[nome]
 
                 proximo = self.calcular_proximo_passo_bfs(
-                    f_data['x'], f_data['y'], alvo_x, alvo_y, f_data['dir']
+                    f_data['x'], f_data['y'], alvo_x, alvo_y, f_data['dir'], dentro_casa
                 )
 
-                if proximo and self.pode_mover(f_data['x'], f_data['y'], proximo):
+                if proximo and self.pode_mover(f_data['x'], f_data['y'], proximo, dentro_casa):
                     f_data['dir'] = proximo
-                    f_data['estado'] = f"BFS ({proximo})"
                 else:
-                    # Escolhe apenas entre direções realmente livres (sem obstáculos)
                     oposto = OPOSTOS.get(f_data['dir'])
                     livres = [
                         d for d in ("Cima", "Baixo", "Esquerda", "Direita")
-                        if self.pode_mover(f_data['x'], f_data['y'], d)
+                        if self.pode_mover(f_data['x'], f_data['y'], d, dentro_casa)
                     ]
                     sem_recuo = [d for d in livres if d != oposto]
                     escolhas = sem_recuo if sem_recuo else livres
-
                     if escolhas:
                         f_data['dir'] = random.choice(escolhas)
-                        f_data['estado'] = f"Aleatório ({f_data['dir']})"
-                    else:
-                        f_data['estado'] = "Bloqueado"
-                        continue
 
-            # Avança somente se o caminho à frente continuar livre
-            if self.pode_mover(f_data['x'], f_data['y'], f_data['dir']):
+            if self.pode_mover(f_data['x'], f_data['y'], f_data['dir'], dentro_casa):
                 dx, dy = self.obter_delta(f_data['dir'])
                 f_data['x'] += dx
                 f_data['y'] += dy
@@ -418,14 +440,14 @@ class PacmanGame:
 
         font = pygame.font.Font(None, 18)
         linhas_debug = [
-            "[MODO DEBUG ATIVO - TAB]",
+            "[MODO IA ATIVO - TAB]",
             f"Blinky: {self.fantasmas['blinky']['estado']}",
             f"Pinky:  {self.fantasmas['pinky']['estado']}",
             f"Inky:   {self.fantasmas['inky']['estado']}",
             f"Clyde:  {self.fantasmas['clyde']['estado']}"
         ]
 
-        box_width = 240
+        box_width = 250
         box_height = 20 + len(linhas_debug) * 18
         debug_surface = pygame.Surface((box_width, box_height), pygame.SRCALPHA)
         debug_surface.fill((10, 10, 30, 220))
