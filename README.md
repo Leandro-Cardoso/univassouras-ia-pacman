@@ -93,3 +93,8 @@ pip install pyinstaller
 ```cmd
 pyinstaller --onefile --noconsole src/game.py
 ```
+
+## Comandos
+
+* **SETAS** - Movimentacão.
+* **TAB** - Modo debug da IA.

@@ -1,6 +1,7 @@
 import csv
 import os
 import random
+from collections import deque
 import pygame
 
 from character_renderer import CharacterRenderer
@@ -15,9 +16,7 @@ VERMELHO = (235, 45, 55)
 BRANCO = (245, 245, 245)
 AZUL = (25, 75, 225)
 AZUL_BRILHO = (65, 135, 255)
-GOLD = (255, 215, 0)
 ROSA_PORTAO = (255, 170, 210)
-DEBUG_BG = (10, 10, 30, 200)
 
 # Configurações do Grid (tela 560x620)
 GRID_SIZE = 20
@@ -65,7 +64,7 @@ for i, linha in enumerate(MAPA):
 LARGURA = len(MAPA[0]) * GRID_SIZE
 ALTURA = len(MAPA) * GRID_SIZE
 TELA = pygame.display.set_mode((LARGURA, ALTURA))
-pygame.display.set_caption("Pac-Man — IA de Cerco e Multi-Fantasmas")
+pygame.display.set_caption("Pac-Man — IA com BFS e Alinhamento Corrigido")
 
 TUNNEL_ROW = 14
 
@@ -128,44 +127,44 @@ class PacmanGame:
                     self.pacman_y = l_idx * GRID_SIZE + GRID_SIZE // 2
                     break
 
-        self.velocidade = 2  # Velocidade ajustada para melhor fluidez dos fantasmas
+        self.velocidade = 2
         self.tamanho = 16
         self.direcao_atual = "Parado"
         self.proxima_direcao = "Parado"
         self.paredes = Paredes
 
-        # Dicionário com os 4 fantasmas e seus estados de IA
+        # Dicionário com os 4 fantasmas
         self.fantasmas = {
             'blinky': {
                 'x': 13 * GRID_SIZE + GRID_SIZE // 2,
                 'y': 11 * GRID_SIZE + GRID_SIZE // 2,
                 'dir': 'Esquerda',
-                'estado': 'Perseguindo Direto'
+                'estado': 'BFS Direto'
             },
             'pinky': {
                 'x': 13 * GRID_SIZE + GRID_SIZE // 2,
                 'y': 14 * GRID_SIZE + GRID_SIZE // 2,
                 'dir': 'Cima',
-                'estado': 'Antecipando Frente'
+                'estado': 'BFS Antecipado'
             },
             'inky': {
                 'x': 12 * GRID_SIZE + GRID_SIZE // 2,
                 'y': 14 * GRID_SIZE + GRID_SIZE // 2,
                 'dir': 'Cima',
-                'estado': 'Flanco Lateral'
+                'estado': 'BFS Flanco'
             },
             'clyde': {
                 'x': 15 * GRID_SIZE + GRID_SIZE // 2,
                 'y': 14 * GRID_SIZE + GRID_SIZE // 2,
                 'dir': 'Cima',
-                'estado': 'Cerco/Aleatório'
+                'estado': 'BFS / Dispersão'
             }
         }
 
         self.dados_telemetria = []
         self.rodando = True
         self.frame = 0
-        self.debug_mode = False  # Modo Debug ativado por tecla
+        self.debug_mode = False
 
     def processar_eventos(self):
         for evento in pygame.event.get():
@@ -181,7 +180,7 @@ class PacmanGame:
                 elif evento.key in (pygame.K_RIGHT, pygame.K_d):
                     self.proxima_direcao = "Direita"
                 elif evento.key == pygame.K_TAB:
-                    self.debug_mode = not self.debug_mode  # Alterna o modo debug
+                    self.debug_mode = not self.debug_mode
 
     def obter_delta(self, direcao):
         if direcao == "Cima":
@@ -235,8 +234,48 @@ class PacmanGame:
 
         return movendo, direcao_anterior
 
+    def calcular_proximo_passo_bfs(self, inicio_x, inicio_y, destino_x, destino_y):
+        """Calcula o caminho livre de colisão (sem bater em paredes 'W' ou 'G') usando BFS."""
+        inicio_col = int(round(inicio_x // GRID_SIZE))
+        inicio_lin = int(round(inicio_y // GRID_SIZE))
+        dest_col = int(round(destino_x // GRID_SIZE))
+        dest_lin = int(round(destino_y // GRID_SIZE))
+
+        if (inicio_col, inicio_lin) == (dest_col, dest_lin):
+            return None
+
+        fila = deque()
+        visitados = {(inicio_col, inicio_lin)}
+
+        movs = [
+            ("Cima", 0, -1),
+            ("Baixo", 0, 1),
+            ("Esquerda", -1, 0),
+            ("Direita", 1, 0)
+        ]
+
+        for d_nome, dc, dl in movs:
+            nc, nl = inicio_col + dc, inicio_lin + dl
+            if 0 <= nl < len(MAPA) and 0 <= nc < len(MAPA[0]):
+                if MAPA[nl][nc] not in ("W", "G"):
+                    fila.append((nc, nl, d_nome))
+                    visitados.add((nc, nl))
+
+        while fila:
+            c, l, primeiro_passo = fila.popleft()
+            if (c, l) == (dest_col, dest_lin):
+                return primeiro_passo
+
+            for d_nome, dc, dl in movs:
+                nc, nl = c + dc, l + dl
+                if 0 <= nl < len(MAPA) and 0 <= nc < len(MAPA[0]):
+                    if MAPA[nl][nc] not in ("W", "G"):
+                        if (nc, nl) not in visitados:
+                            visitados.add((nc, nl))
+                            fila.append((nc, nl, primeiro_passo))
+        return None
+
     def atualizar_fantasmas_ia(self):
-        # Direções possíveis
         direcoes_possiveis = {
             "Cima": (0, -self.velocidade),
             "Baixo": (0, self.velocidade),
@@ -244,12 +283,11 @@ class PacmanGame:
             "Direita": (self.velocidade, 0)
         }
 
-        # Alvos estratégicos para cada fantasma cercar o jogador de forma distinta
+        # Alvos estratégicos de cerco
         alvos = {}
-        # Blinky: Persegue diretamente a posição do Pac-Man
-        alvos['blinky'] = (self.pacman_x, self.pacman_y)
+        alvos['blinky'] = (self.pacman_x, self.pacman_y)  # Direto
         
-        # Pinky: Tenta antecipar 4 tiles à frente do Pac-Man
+        # Pinky: Antecipa 4 tiles à frente
         offset_frente = 4 * GRID_SIZE
         px, py = self.pacman_x, self.pacman_y
         if self.direcao_atual == "Cima": py -= offset_frente
@@ -258,64 +296,47 @@ class PacmanGame:
         elif self.direcao_atual == "Direita": px += offset_frente
         alvos['pinky'] = (px, py)
 
-        # Inky: Flanco lateral oposto
+        # Inky: Flanco oposto
         alvos['inky'] = (self.pacman_x - (px - self.pacman_x), self.pacman_y - (py - self.pacman_y))
 
-        # Clyde: Cerco alternativo ou recuo se muito perto
+        # Clyde: Dispersa se muito perto, caso contrário persegue
         dist_clyde = ((self.fantasmas['clyde']['x'] - self.pacman_x)**2 + (self.fantasmas['clyde']['y'] - self.pacman_y)**2)**0.5
         if dist_clyde < 4 * GRID_SIZE:
-            alvos['clyde'] = (0, ALTURA)  # Canto inferior esquerdo (recuo/dispersão)
+            alvos['clyde'] = (0, ALTURA)
         else:
             alvos['clyde'] = (self.pacman_x, self.pacman_y)
 
-        # Atualiza cada fantasma
         for nome, f_data in self.fantasmas.items():
             alvo_x, alvo_y = alvos[nome]
             
-            # Avalia movimentos válidos
-            movimentos_validos = []
-            for d_nome, (dx, dy) in direcoes_possiveis.items():
-                novo_x = f_data['x'] + dx
-                novo_y = f_data['y'] + dy
-                if self.pode_mover(novo_x, novo_y, self.tamanho):
-                    # Evita o recuo imediato a menos que seja a única opção
-                    oposto = {"Cima": "Baixo", "Baixo": "Cima", "Esquerda": "Direita", "Direita": "Esquerda"}
-                    dist = ((novo_x - alvo_x)**2 + (novo_y - alvo_y)**2)**0.5
-                    movimentos_validos.append((dist, d_nome, dx, dy))
+            # Tenta encontrar rota sem colisão por BFS
+            proximo_passo_nome = self.calcular_proximo_passo_bfs(f_data['x'], f_data['y'], alvo_x, alvo_y)
+            
+            if proximo_passo_nome and proximo_passo_nome in direcoes_possiveis:
+                dx, dy = direcoes_possiveis[proximo_passo_nome]
+                if self.pode_mover(f_data['x'] + dx, f_data['y'] + dy, self.tamanho):
+                    f_data['x'] += dx
+                    f_data['y'] += dy
+                    f_data['dir'] = proximo_passo_nome
+                    f_data['estado'] = f"BFS ({proximo_passo_nome})"
+                    continue
 
-            if movimentos_validos:
-                # Ordena pelo mais próximo do alvo estratégico
-                movimentos_validos.sort(key=lambda x: x[0])
-                
-                # Escolhe o melhor caminho ou altera se houver empate/bloqueio
-                escolha = movimentos_validos[0]
-                # Pequena estocasticidade para escolher entre os 2 melhores se disponíveis para diversificar caminhos
-                if len(movimentos_validos) > 1 and random.random() < 0.2:
-                    escolha = movimentos_validos[1]
-
-                _, d_nome, dx, dy = escolha
+            # Fallback: Movimento aleatório seguro se o BFS falhar/estiver preso
+            f_data['estado'] = "Aleatório (Fallback)"
+            validos = [
+                (d, dx, dy) for d, (dx, dy) in direcoes_possiveis.items()
+                if self.pode_mover(f_data['x'] + dx, f_data['y'] + dy, self.tamanho)
+            ]
+            if validos:
+                d_nome, dx, dy = random.choice(validos)
                 f_data['x'] += dx
                 f_data['y'] += dy
                 f_data['dir'] = d_nome
-                f_data['estado'] = f"Cerco ({d_nome})"
-            else:
-                # Movimento aleatório de escape caso esteja totalmente bloqueado
-                f_data['estado'] = "Aleatório (Bloqueado)"
-                validos_aleatorios = [
-                    (d, dx, dy) for d, (dx, dy) in direcoes_possiveis.items()
-                    if self.pode_mover(f_data['x'] + dx, f_data['y'] + dy, self.tamanho)
-                ]
-                if validos_aleatorios:
-                    d_nome, dx, dy = random.choice(validos_aleatorios)
-                    f_data['x'] += dx
-                    f_data['y'] += dy
-                    f_data['dir'] = d_nome
 
     def atualizar_posicao(self):
         movendo, direcao_anterior = self.atualizar_posicao_pacman()
         self.atualizar_fantasmas_ia()
 
-        # Salva a telemetria por frame com a posição exata de todos os elementos
         self.frame += 1
         registro = {
             "frame": self.frame,
@@ -346,8 +367,7 @@ class PacmanGame:
             f"Clyde:  {self.fantasmas['clyde']['estado']}"
         ]
 
-        # Caixa semi-transparente no canto superior esquerdo
-        box_width = 220
+        box_width = 240
         box_height = 20 + len(linhas_debug) * 18
         debug_surface = pygame.Surface((box_width, box_height), pygame.SRCALPHA)
         debug_surface.fill((10, 10, 30, 220))
@@ -370,24 +390,27 @@ class PacmanGame:
         }
         direcao_ingles_pac = dir_map.get(self.direcao_atual, "left")
 
-        # Desenhar Pac-Man
-        pos_pac = (self.pacman_x / GRID_SIZE, self.pacman_y / GRID_SIZE)
+        # Correção do alinhamento: Subtrai metade do tile para ajustar perfeitamente ao topo-esquerdo do grid
+        pos_pac = (
+            (self.pacman_x - GRID_SIZE // 2) / GRID_SIZE,
+            (self.pacman_y - GRID_SIZE // 2) / GRID_SIZE
+        )
         CharacterRenderer.draw_pacman(
             TELA, pygame, pos_pac, GRID_SIZE, direcao_ingles_pac, self.frame
         )
 
-        # Desenhar os 4 fantasmas com suas respectivas cores
         for nome, f_data in self.fantasmas.items():
-            pos_ghost = (f_data['x'] / GRID_SIZE, f_data['y'] / GRID_SIZE)
+            pos_ghost = (
+                (f_data['x'] - GRID_SIZE // 2) / GRID_SIZE,
+                (f_data['y'] - GRID_SIZE // 2) / GRID_SIZE
+            )
             dir_ghost_ingles = dir_map.get(f_data['dir'], "left")
             CharacterRenderer.draw_ghost(
                 TELA, pygame, pos_ghost, GRID_SIZE, nome, dir_ghost_ingles,
                 frame=self.frame,
             )
 
-        # Desenha o log de debug se ativo
         self.desenhar_debug()
-
         pygame.display.flip()
 
     def salvar_dataset(self, caminho_arquivo="dataset_pacman.csv"):
