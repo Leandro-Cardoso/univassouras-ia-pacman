@@ -1,3 +1,9 @@
+"""Módulo de Telemetria, Registro de Dataset e HUD de Depuração da IA.
+Este módulo gerencia duas responsabilidades principais:
+1. Salvar os dados de telemetria em formato CSV (`dataset_pacman.csv`) para treinamento e análise dos modelos de Machine Learning.
+2. Renderizar o painel HUD (Heads-Up Display) estilizado na tela do jogo, exibindo em tempo real as decisões da IA, pontuação e estados dinâmicos destacados com as cores correspondentes a cada fantasma.
+"""
+
 import csv
 import os
 from menu import salvar_ranking
@@ -8,6 +14,7 @@ class IALogger:
         self.caminho_csv = caminho_csv
 
     def salvar_dataset(self, dados_telemetria, morreu, pos_morte_x, pos_morte_y, pontuacao, frame, fps):
+        """Salva o dataset acumulado em CSV e atualiza o ranking de pontuações."""
         if not dados_telemetria:
             return
         
@@ -28,3 +35,76 @@ class IALogger:
         tempo_total = round(frame / fps, 1)
         salvar_ranking(self.nome_jogador, pontuacao, f"{tempo_total}s")
         print(f"[INFO] Dataset atualizado e pontuação salva!")
+
+    def desenhar_hud_ia(self, tela, pygame, largura, altura, frame, fps, pontuacao, fase, modo_medo, timer_medo, fantasmas, pacman_y, pausado):
+        """Renderiza um painel HUD flutuante avançado na tela do jogo.
+
+        Utiliza cores exclusivas para cada fantasma (Blinky em vermelho, Pinky em rosa,
+        Inky em ciano e Clyde em laranja), além de destacar a pontuação e os estados
+        de modo com tamanhos de fonte maiores para melhor legibilidade.
+        """
+        # Inicializa fontes de tamanhos diferentes se ainda não existirem
+        if not hasattr(self, '_font_titulo'):
+            self._font_titulo = pygame.font.Font(None, 18)
+            self._font_corpo = pygame.font.Font(None, 16)
+            self._font_destaque = pygame.font.Font(None, 20)
+
+        tempo_seg = round(frame / fps, 1)
+        
+        COR_FUNDO = (10, 10, 30, 230)
+        COR_BORDA = (65, 135, 255)
+        
+        # Cores características dos fantasmas para identificação visual imediata
+        CORES_FANTASMAS = {
+            'blinky': (235, 45, 55),   # Vermelho
+            'pinky':  (255, 145, 190), # Rosa
+            'inky':   (60, 220, 235),  # Ciano
+            'clyde':  (255, 165, 45)   # Laranja
+        }
+
+        linhas_info = []
+        
+        # Cabeçalho geral com informações da partida
+        txt_cabecalho = f"JOGADOR: {self.nome_jogador.upper()} | TEMPO: {tempo_seg}s | FASE: {fase}"
+        if pausado:
+            txt_cabecalho += " [PAUSADO]"
+        linhas_info.append((txt_cabecalho, (245, 245, 245), self._font_titulo))
+
+        # Pontuação destacada em amarelo vibrante
+        txt_pontos = f"★ PONTUAÇÃO: {pontuacao} PONTOS"
+        linhas_info.append((txt_pontos, (255, 220, 0), self._font_destaque))
+
+        # Indicador de Modo de Medo (Fuga) destacado em azul
+        if modo_medo:
+            tempo_medo_seg = round(timer_medo / fps, 1)
+            txt_medo = f"⚠️ MODO MEDO ATIVO: {tempo_medo_seg}s (TURBO ⚡)"
+            linhas_info.append((txt_medo, (45, 120, 255), self._font_destaque))
+
+        linhas_info.append(("--- ESTADOS E TÁTICAS DA IA ---", (160, 170, 210), self._font_corpo))
+
+        # Linhas específicas para cada fantasma usando a cor correspondente
+        for nome, f_data in fantasmas.items():
+            cor_fantasma = CORES_FANTASMAS.get(nome, (245, 245, 245))
+            txt_fantasma = f"{nome.capitalize()}: {f_data['estado']} | Dist: {f_data['dist_alvo']}px"
+            linhas_info.append((txt_fantasma, cor_fantasma, self._font_corpo))
+
+        # Cálculo dinâmico do tamanho do painel HUD
+        box_width = 440
+        box_height = 16 + sum(20 if f[2] == self._font_corpo else 24 for f in linhas_info)
+        
+        hud_surface = pygame.Surface((box_width, box_height), pygame.SRCALPHA)
+        hud_surface.fill(COR_FUNDO)
+        pygame.draw.rect(hud_surface, COR_BORDA, hud_surface.get_rect(), 1, border_radius=6)
+
+        # Renderização dos textos no painel
+        y_offset = 8
+        for texto, cor, fonte in linhas_info:
+            txt_surface = fonte.render(texto, True, cor)
+            hud_surface.blit(txt_surface, (8, y_offset))
+            y_offset += 18 if fonte == self._font_corpo else 24
+
+        # Posicionamento inteligente (evita cobrir o Pac-Man)
+        pos_x = 10
+        pos_y = altura - box_height - 10 if pacman_y < (altura / 2) else 10
+        
+        tela.blit(hud_surface, (pos_x, pos_y))

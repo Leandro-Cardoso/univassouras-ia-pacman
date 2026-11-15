@@ -416,51 +416,11 @@ class PacmanGame:
   def desenhar_debug(self):
     if not self.debug_mode:
       return
-    font = pygame.font.Font(None, 16)
-    linhas = [
-        (
-            f"[JOGADOR: {self.nome_jogador} | PONTOS: {self.pontuacao} | FASE:"
-            f" {self.fase} | TEMPO: {round(self.frame/FPS, 1)}s]"
-        ),
-        (
-            f"Blinky: {self.fantasmas['blinky']['estado']} | Dist:"
-            f" {self.fantasmas['blinky']['dist_alvo']}px"
-        ),
-        (
-            f"Pinky:  {self.fantasmas['pinky']['estado']} | Dist:"
-            f" {self.fantasmas['pinky']['dist_alvo']}px"
-        ),
-        (
-            f"Inky:   {self.fantasmas['inky']['estado']} | Dist:"
-            f" {self.fantasmas['inky']['dist_alvo']}px"
-        ),
-        (
-            f"Clyde:  {self.fantasmas['clyde']['estado']} | Dist:"
-            f" {self.fantasmas['clyde']['dist_alvo']}px"
-        ),
-    ]
-    box_surface = pygame.Surface((440, 22 + len(linhas) * 16), pygame.SRCALPHA)
-    box_surface.fill((10, 10, 30, 230))
-    pygame.draw.rect(
-        box_surface, (65, 135, 255), box_surface.get_rect(), 1, border_radius=4
-    )
-    for idx, txt in enumerate(linhas):
-      box_surface.blit(
-          font.render(
-              txt,
-              True,
-              (255, 215, 0) if idx == 0 else (245, 245, 245),
-          ),
-          (8, 6 + idx * 16),
-      )
-    TELA.blit(
-        box_surface,
-        (
-            10,
-            ALTURA - box_surface.get_height() - 10
-            if self.pacman_y < ALTURA / 2
-            else 10,
-        ),
+    # Chama o HUD moderno, colorido e customizado por fantasma do IALogger
+    self.logger.desenhar_hud_ia(
+        TELA, pygame, LARGURA, ALTURA, self.frame, FPS,
+        self.pontuacao, self.fase, self.modo_medo_ativo,
+        self.timer_medo, self.fantasmas, self.pacman_y, self.pausado
     )
 
   def desenhar(self):
