@@ -4,6 +4,10 @@ Responsável por calcular os caminhos no labirinto usando o algoritmo BFS, geren
 
 from collections import deque
 import random
+import os
+import pandas as pd
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.preprocessing import LabelEncoder
 
 # Direções opostas para evitar que o fantasma recupere o caminho imediatamente
 OPOSTOS = {
@@ -12,6 +16,59 @@ OPOSTOS = {
     "Esquerda": "Direita",
     "Direita": "Esquerda",
 }
+
+# Mapeamento para converter a direção prevista pela IA em deslocamento no mapa
+DIRECOES_MAPA = {
+    "Cima": (0, -1),
+    "Baixo": (0, 1),
+    "Esquerda": (-1, 0),
+    "Direita": (1, 0),
+}
+
+def prever_destino_com_ia(JogoInstance):
+  """Utiliza o dataset e um modelo de árvore de decisão para prever
+
+  a posição futura do Pac-Man com base no aprendizado de máquina.
+  """
+  caminho_csv = "dataset_pacman.csv"
+  if not os.path.exists(caminho_csv):
+    return None
+
+  try:
+    df = pd.read_csv(caminho_csv)
+    if len(df) < 5:
+      return None
+
+    # Features idênticas às usadas na Etapa 2 e 3 do projeto
+    features = ["pacman_x", "pacman_y", "fantasma_dist_min", "modo_medo"]
+    X = df[features].copy()
+    y = df["proxima_direcao_jogador"]
+
+    le_target = LabelEncoder()
+    y_encoded = le_target.fit_transform(y)
+
+    modelo = DecisionTreeClassifier(random_state=42)
+    modelo.fit(X, y_encoded)
+
+    # Calcula a menor distância atual para os fantasmas para compor a feature
+    dist_min = min(
+        ((f_data["x"] - JogoInstance.pacman_x)**2 + (f_data["y"] - JogoInstance.pacman_y)**2)**0.5
+        for f_data in JogoInstance.fantasmas.values()
+    )
+
+    modo_medo_val = 1 if JogoInstance.modo_medo_ativo else 0
+    entrada_atual = [[JogoInstance.pacman_x, JogoInstance.pacman_y, dist_min, modo_medo_val]]
+
+    pred_encoded = modelo.predict(entrada_atual)
+    direcao_prevista = le_target.inverse_transform(pred_encoded)[0]
+
+    # Retorna coordenadas futuras estimadas com base na predição da IA
+    dx, dy = DIRECOES_MAPA.get(direcao_prevista, (0, 0))
+    gs = JogoInstance.GRID_SIZE
+    return JogoInstance.pacman_x + (dx * 3 * gs), JogoInstance.pacman_y + (dy * 3 * gs), direcao_prevista
+  except Exception:
+    return None
+
 
 def calcular_proximo_passo_bfs(
     mapa,
@@ -86,7 +143,7 @@ def calcular_proximo_passo_bfs(
 def atualizar_fantasmas_ia(JogoInstance):
   """Atualiza os estados e calcula alvos estratégicos de cerco e predição
 
-  para cada fantasma com base na posição e histórico de movimento do Pac-Man.
+  para cada fantasma com base na posição, histórico e no Modelo de ML (dataset).
   """
   if JogoInstance.modo_medo_ativo:
     JogoInstance.timer_medo -= 1
@@ -95,29 +152,26 @@ def atualizar_fantasmas_ia(JogoInstance):
       JogoInstance.velocidade = JogoInstance.velocidade_normal
 
   px, py = JogoInstance.pacman_x, JogoInstance.pacman_y
-  p_dir = JogoInstance.direcao_atual
   gs = JogoInstance.GRID_SIZE
 
-  # 1. PREDIÇÃO DE TRAJETÓRIA (Antecipa para onde o Pac-Man está olhando)
-  ahead_x, ahead_y = px, py
-  alcance_emboscada = 4 * gs
-  if p_dir == "Cima":
-    ahead_y -= alcance_emboscada
-  elif p_dir == "Baixo":
-    ahead_y += alcance_emboscada
-  elif p_dir == "Esquerda":
-    ahead_x -= alcance_emboscada
-  elif p_dir == "Direita":
-    ahead_x += alcance_emboscada
+  # Tenta prever o próximo movimento usando o dataset e Machine Learning
+  pred_ia = prever_destino_com_ia(JogoInstance)
+  if pred_ia:
+    ahead_x, ahead_y, direcao_ml = pred_ia
+    desc_pinky = f"IA ML ({direcao_ml})"
+  else:
+    # Fallback caso o dataset ainda não tenha dados suficientes
+    ahead_x, ahead_y = px, py
+    desc_pinky = "Cerco Frontal (Fallback)"
 
-  # 2. DEFINIÇÃO DE ALVOS INDIVIDUAIS PARA CERCO COORDENADO
+  # DEFINIÇÃO DE ALVOS INDIVIDUAIS PARA CERCO COORDENADO
   alvos_estrategicos = {}
 
-  # Blinky (Vermelho): Perseguição direta (Calcanhar do Pac-Man)
+  # Blinky (Vermelho): Perseguição direta à posição atual do Pac-Man
   alvos_estrategicos["blinky"] = (px, py, "Perseguição Direta")
 
-  # Pinky (Rosa): Emboscada (Tenta cortar a frente prevendo o destino)
-  alvos_estrategicos["pinky"] = (ahead_x, ahead_y, "Cerco Frontal")
+  # Pinky (Rosa): Usa a predição da Árvore de Decisão treinada com o Dataset para interceptar
+  alvos_estrategicos["pinky"] = (ahead_x, ahead_y, desc_pinky)
 
   # Inky (Ciano): Cerco Flanqueado (Usa o Blinky como pivô para fechar o ângulo)
   bx = JogoInstance.fantasmas["blinky"]["x"]
@@ -126,12 +180,11 @@ def atualizar_fantasmas_ia(JogoInstance):
   flanco_y = py + (py - by)
   alvos_estrategicos["inky"] = (flanco_x, flanco_y, "Cerco Flanqueado")
 
-  # Clyde (Laranja): Cerco Inteligente (Se afasta se estiver muito perto, cerca se longe)
+  # Clyde (Laranja): Cerco Inteligente (Se afasta se muito perto, persegue se longe)
   cx_pos = JogoInstance.fantasmas["clyde"]["x"]
   cy_pos = JogoInstance.fantasmas["clyde"]["y"]
   dist_clyde = ((cx_pos - px) ** 2 + (cy_pos - py) ** 2) ** 0.5
   if dist_clyde < 5 * gs:
-    # Recua para o canto inferior esquerdo se chegar muito perto
     alvos_estrategicos["clyde"] = (
         2 * gs,
         JogoInstance.ALTURA - 2 * gs,
