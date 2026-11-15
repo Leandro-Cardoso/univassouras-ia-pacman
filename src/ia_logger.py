@@ -45,13 +45,13 @@ class IALogger:
         """
         # Inicializa fontes de tamanhos diferentes se ainda não existirem
         if not hasattr(self, '_font_titulo'):
-            self._font_titulo = pygame.font.Font(None, 18)
-            self._font_corpo = pygame.font.Font(None, 16)
-            self._font_destaque = pygame.font.Font(None, 20)
+            self._font_titulo = pygame.font.Font(None, 17)
+            self._font_corpo = pygame.font.Font(None, 15)
+            self._font_destaque = pygame.font.Font(None, 19)
 
         tempo_seg = round(frame / fps, 1)
         
-        COR_FUNDO = (10, 10, 30, 230)
+        COR_FUNDO = (10, 10, 30, 235)
         COR_BORDA = (65, 135, 255)
         
         # Cores características dos fantasmas para identificação visual imediata
@@ -62,46 +62,64 @@ class IALogger:
             'clyde':  (255, 165, 45)   # Laranja
         }
 
-        linhas_info = []
-        
-        # Cabeçalho geral com informações da partida
-        txt_cabecalho = f"JOGADOR: {self.nome_jogador.upper()} | TEMPO: {tempo_seg}s | FASE: {fase}"
+        # Estrutura de blocos para gerenciar espaçamentos e separações limpas
+        blocos_hud = []
+
+        # Bloco 1: Identificação, Tempo, Fase e Estado do Jogo (separados)
+        bloco_jogador = []
+        bloco_jogador.append((f"JOGADOR: {self.nome_jogador.upper()}", (245, 245, 245), self._font_titulo))
+        bloco_jogador.append((f"TEMPO: {tempo_seg}s    |    FASE: {fase}", (200, 210, 235), self._font_corpo))
         if pausado:
-            txt_cabecalho += " [PAUSADO]"
-        linhas_info.append((txt_cabecalho, (245, 245, 245), self._font_titulo))
+            bloco_jogador.append(("ESTADO: PAUSADO", (255, 100, 100), self._font_destaque))
+        else:
+            bloco_jogador.append(("ESTADO: JOGANDO", (100, 255, 150), self._font_corpo))
+        blocos_hud.append(bloco_jogador)
 
-        # Pontuação destacada em amarelo vibrante
-        txt_pontos = f"★ PONTUAÇÃO: {pontuacao} PONTOS"
-        linhas_info.append((txt_pontos, (255, 220, 0), self._font_destaque))
-
-        # Indicador de Modo de Medo (Fuga) destacado em azul
+        # Bloco 2: Pontuação Destacada
+        bloco_pontos = []
+        bloco_pontos.append((f"PONTUACAO: {pontuacao} PONTOS", (255, 220, 0), self._font_destaque))
         if modo_medo:
             tempo_medo_seg = round(timer_medo / fps, 1)
-            txt_medo = f"⚠️ MODO MEDO ATIVO: {tempo_medo_seg}s (TURBO ⚡)"
-            linhas_info.append((txt_medo, (45, 120, 255), self._font_destaque))
+            bloco_pontos.append((f"MODO MEDO ATIVO: {tempo_medo_seg}s", (45, 120, 255), self._font_destaque))
+        blocos_hud.append(bloco_pontos)
 
-        linhas_info.append(("--- ESTADOS E TÁTICAS DA IA ---", (160, 170, 210), self._font_corpo))
-
-        # Linhas específicas para cada fantasma usando a cor correspondente
+        # Bloco 3: Estados e Táticas da IA dos Fantasmas
+        bloco_ia = []
+        bloco_ia.append(("--- TATICAS E ESTADOS DA IA ---", (160, 170, 210), self._font_titulo))
         for nome, f_data in fantasmas.items():
             cor_fantasma = CORES_FANTASMAS.get(nome, (245, 245, 245))
             txt_fantasma = f"{nome.capitalize()}: {f_data['estado']} | Dist: {f_data['dist_alvo']}px"
-            linhas_info.append((txt_fantasma, cor_fantasma, self._font_corpo))
+            bloco_ia.append((txt_fantasma, cor_fantasma, self._font_corpo))
+        blocos_hud.append(bloco_ia)
 
-        # Cálculo dinâmico do tamanho do painel HUD
+        # Cálculo dinâmico da altura total considerando os espaçamentos entre blocos
+        padding_vertical = 10
+        espaco_entre_blocos = 10
+        altura_conteudo = 0
+        
+        for bloco in blocos_hud:
+            for _, _, fonte in bloco:
+                altura_conteudo += 18 if fonte == self._font_corpo else 22
+            altura_conteudo += espaco_entre_blocos # margem inferior de cada bloco
+
         box_width = 440
-        box_height = 16 + sum(20 if f[2] == self._font_corpo else 24 for f in linhas_info)
+        box_height = (padding_vertical * 2) + altura_conteudo
         
         hud_surface = pygame.Surface((box_width, box_height), pygame.SRCALPHA)
         hud_surface.fill(COR_FUNDO)
         pygame.draw.rect(hud_surface, COR_BORDA, hud_surface.get_rect(), 1, border_radius=6)
 
-        # Renderização dos textos no painel
-        y_offset = 8
-        for texto, cor, fonte in linhas_info:
-            txt_surface = fonte.render(texto, True, cor)
-            hud_surface.blit(txt_surface, (8, y_offset))
-            y_offset += 18 if fonte == self._font_corpo else 24
+        # Renderização organizada dos blocos com espaçamento limpo
+        y_offset = padding_vertical
+        for bloco_idx, bloco in enumerate(blocos_hud):
+            for texto, cor, fonte in bloco:
+                txt_surface = fonte.render(texto, True, cor)
+                hud_surface.blit(txt_surface, (12, y_offset))
+                y_offset += 18 if fonte == self._font_corpo else 22
+            
+            # Adiciona respiro visual extra entre blocos distintos (exceto no último)
+            if bloco_idx < len(blocos_hud) - 1:
+                y_offset += 6
 
         # Posicionamento inteligente (evita cobrir o Pac-Man)
         pos_x = 10

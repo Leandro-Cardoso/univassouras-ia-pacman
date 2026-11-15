@@ -114,17 +114,17 @@ def atualizar_fantasmas_ia(JogoInstance):
   alvos_estrategicos = {}
 
   # Blinky (Vermelho): Perseguição direta (Calcanhar do Pac-Man)
-  alvos_estrategicos["blinky"] = (px, py, "Ataque Direto 🎯")
+  alvos_estrategicos["blinky"] = (px, py, "Perseguição Direta")
 
   # Pinky (Rosa): Emboscada (Tenta cortar a frente prevendo o destino)
-  alvos_estrategicos["pinky"] = (ahead_x, ahead_y, "Emboscada Frontal ⚡")
+  alvos_estrategicos["pinky"] = (ahead_x, ahead_y, "Cerco Frontal")
 
   # Inky (Ciano): Cerco Flanqueado (Usa o Blinky como pivô para fechar o ângulo)
   bx = JogoInstance.fantasmas["blinky"]["x"]
   by = JogoInstance.fantasmas["blinky"]["y"]
   flanco_x = px + (px - bx)
   flanco_y = py + (py - by)
-  alvos_estrategicos["inky"] = (flanco_x, flanco_y, "Flanco Cruzado 🔄")
+  alvos_estrategicos["inky"] = (flanco_x, flanco_y, "Cerco Flanqueado")
 
   # Clyde (Laranja): Cerco Inteligente (Se afasta se estiver muito perto, cerca se longe)
   cx_pos = JogoInstance.fantasmas["clyde"]["x"]
@@ -135,10 +135,10 @@ def atualizar_fantasmas_ia(JogoInstance):
     alvos_estrategicos["clyde"] = (
         2 * gs,
         JogoInstance.ALTURA - 2 * gs,
-        "Patrulha Tática 🛡️",
+        "Patrulha Tática",
     )
   else:
-    alvos_estrategicos["clyde"] = (px, py, "Cerco Retaguarda 🏴‍☠️")
+    alvos_estrategicos["clyde"] = (px, py, "Cerco Retaguarda")
 
   # 3. ATUALIZAÇÃO DA MOVIMENTAÇÃO DE CADA FANTASMA
   for nome, f_data in JogoInstance.fantasmas.items():
@@ -153,7 +153,7 @@ def atualizar_fantasmas_ia(JogoInstance):
       f_data["estado"] = "Saindo da Casa"
     elif JogoInstance.modo_medo_ativo:
       alvo_x, alvo_y = JogoInstance.centro_casa_fantasmas
-      f_data["estado"] = "Fuginho p/ Casa 😨"
+      f_data["estado"] = "Fuginho para Casa"
     else:
       alvo_x, alvo_y, descricao_estado = alvos_estrategicos[nome]
       f_data["estado"] = descricao_estado
