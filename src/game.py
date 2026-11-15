@@ -72,7 +72,6 @@ OPOSTOS = {
     "Direita": "Esquerda",
 }
 
-
 class PacmanGame:
 
   def __init__(self, nome_jogador):
@@ -517,7 +516,6 @@ class PacmanGame:
       )
       return self.retornar_menu
 
-
 def main():
   while True:
     nome_jogador = menu_principal(TELA, LARGURA)
@@ -525,7 +523,6 @@ def main():
     voltar = jogo.executar()
     if not voltar:
       break
-
 
 if __name__ == "__main__":
   main()

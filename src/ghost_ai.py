@@ -1,8 +1,5 @@
 """Módulo de Inteligência Artificial e Pathfinding (BFS) dos Fantasmas.
-
-Responsável por calcular os caminhos no labirinto usando o algoritmo BFS,
-gerenciar a saída da base, o modo de dispersão, o modo de medo (fuga)
-e a perseguição ao Pac-Man.
+Responsável por calcular os caminhos no labirinto usando o algoritmo BFS, gerenciar a saída da base, o modo de medo (fuga) e estratégias avançadas de cerco e predição de movimento baseadas no comportamento do Pac-Man.
 """
 
 from collections import deque
@@ -51,7 +48,6 @@ def calcular_proximo_passo_bfs(
       ("Direita", 1, 0),
   ]
 
-  # Função auxiliar interna para checar se a célula está livre para o fantasma
   def celula_livre_local(c, l):
     if l == tunnel_row and (c < 0 or c >= len(mapa[0])):
       return True
@@ -86,12 +82,11 @@ def calcular_proximo_passo_bfs(
           fila.append((nc, nl, primeiro_passo))
   return None
 
-def atualizar_fantasmas_ia(
-     JogoInstance,
-):
-  """Atualiza os estados, alvos e movimentação baseada em IA para todos os
 
-  fantasmas da partida.
+def atualizar_fantasmas_ia(JogoInstance):
+  """Atualiza os estados e calcula alvos estratégicos de cerco e predição
+
+  para cada fantasma com base na posição e histórico de movimento do Pac-Man.
   """
   if JogoInstance.modo_medo_ativo:
     JogoInstance.timer_medo -= 1
@@ -100,33 +95,74 @@ def atualizar_fantasmas_ia(
       JogoInstance.velocidade = JogoInstance.velocidade_normal
 
   px, py = JogoInstance.pacman_x, JogoInstance.pacman_y
+  p_dir = JogoInstance.direcao_atual
+  gs = JogoInstance.GRID_SIZE
 
+  # 1. PREDIÇÃO DE TRAJETÓRIA (Antecipa para onde o Pac-Man está olhando)
+  ahead_x, ahead_y = px, py
+  alcance_emboscada = 4 * gs
+  if p_dir == "Cima":
+    ahead_y -= alcance_emboscada
+  elif p_dir == "Baixo":
+    ahead_y += alcance_emboscada
+  elif p_dir == "Esquerda":
+    ahead_x -= alcance_emboscada
+  elif p_dir == "Direita":
+    ahead_x += alcance_emboscada
+
+  # 2. DEFINIÇÃO DE ALVOS INDIVIDUAIS PARA CERCO COORDENADO
+  alvos_estrategicos = {}
+
+  # Blinky (Vermelho): Perseguição direta (Calcanhar do Pac-Man)
+  alvos_estrategicos["blinky"] = (px, py, "Ataque Direto 🎯")
+
+  # Pinky (Rosa): Emboscada (Tenta cortar a frente prevendo o destino)
+  alvos_estrategicos["pinky"] = (ahead_x, ahead_y, "Emboscada Frontal ⚡")
+
+  # Inky (Ciano): Cerco Flanqueado (Usa o Blinky como pivô para fechar o ângulo)
+  bx = JogoInstance.fantasmas["blinky"]["x"]
+  by = JogoInstance.fantasmas["blinky"]["y"]
+  flanco_x = px + (px - bx)
+  flanco_y = py + (py - by)
+  alvos_estrategicos["inky"] = (flanco_x, flanco_y, "Flanco Cruzado 🔄")
+
+  # Clyde (Laranja): Cerco Inteligente (Se afasta se estiver muito perto, cerca se longe)
+  cx_pos = JogoInstance.fantasmas["clyde"]["x"]
+  cy_pos = JogoInstance.fantasmas["clyde"]["y"]
+  dist_clyde = ((cx_pos - px) ** 2 + (cy_pos - py) ** 2) ** 0.5
+  if dist_clyde < 5 * gs:
+    # Recua para o canto inferior esquerdo se chegar muito perto
+    alvos_estrategicos["clyde"] = (
+        2 * gs,
+        JogoInstance.ALTURA - 2 * gs,
+        "Patrulha Tática 🛡️",
+    )
+  else:
+    alvos_estrategicos["clyde"] = (px, py, "Cerco Retaguarda 🏴‍☠️")
+
+  # 3. ATUALIZAÇÃO DA MOVIMENTAÇÃO DE CADA FANTASMA
   for nome, f_data in JogoInstance.fantasmas.items():
-    lin_atual = int(f_data["y"] // JogoInstance.GRID_SIZE)
+    lin_atual = int(f_data["y"] // gs)
     dentro_casa = 12 <= lin_atual <= 14
 
-    # Definição de estados e alvos baseados na situação atual do jogo
     if dentro_casa:
       if JogoInstance.frame < f_data["timer_saida"]:
         f_data["estado"] = "Aguardando Saída"
         continue
-      alvo_x, alvo_y = (
-          13 * JogoInstance.GRID_SIZE + JogoInstance.GRID_SIZE // 2,
-          11 * JogoInstance.GRID_SIZE + JogoInstance.GRID_SIZE // 2,
-      )
+      alvo_x, alvo_y = (13 * gs + gs // 2, 11 * gs + gs // 2)
       f_data["estado"] = "Saindo da Casa"
     elif JogoInstance.modo_medo_ativo:
       alvo_x, alvo_y = JogoInstance.centro_casa_fantasmas
       f_data["estado"] = "Fuginho p/ Casa 😨"
     else:
-      alvo_x, alvo_y = px, py
-      f_data["estado"] = "Perseguição"
+      alvo_x, alvo_y, descricao_estado = alvos_estrategicos[nome]
+      f_data["estado"] = descricao_estado
 
     f_data["dist_alvo"] = int(
         ((f_data["x"] - alvo_x) ** 2 + (f_data["y"] - alvo_y) ** 2) ** 0.5
     )
 
-    # Verificação de alinhamento e recalculo de direção por BFS
+    # Executa o pathfinding otimizado por BFS nas interseções do labirinto
     if JogoInstance.no_centro_celula(f_data["x"], f_data["y"], tolerancia=1):
       f_data["x"], f_data["y"] = JogoInstance.alinhar_ao_centro(
           f_data["x"], f_data["y"]
@@ -139,7 +175,7 @@ def atualizar_fantasmas_ia(
           alvo_y,
           f_data["dir"],
           dentro_casa,
-          JogoInstance.GRID_SIZE,
+          gs,
           JogoInstance.TUNNEL_ROW,
       )
       if proximo and JogoInstance.pode_mover(
@@ -163,8 +199,6 @@ def atualizar_fantasmas_ia(
       f_data["y"] += dy
 
     if (
-        JogoInstance.TUNNEL_ROW * JogoInstance.GRID_SIZE
-        <= f_data["y"]
-        < (JogoInstance.TUNNEL_ROW + 1) * JogoInstance.GRID_SIZE
+        JogoInstance.TUNNEL_ROW * gs <= f_data["y"] < (JogoInstance.TUNNEL_ROW + 1) * gs
     ):
       f_data["x"] = f_data["x"] % JogoInstance.LARGURA
