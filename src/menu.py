@@ -22,17 +22,15 @@ def carregar_ranking(arquivo="scores.csv"):
             pass
     return ranking
 
-
 def salvar_ranking(nome, pontuacao, tempo, arquivo="scores.csv"):
     ranking = carregar_ranking(arquivo)
     ranking.append({"Nome": nome, "Pontuacao": str(pontuacao), "Tempo": str(tempo)})
-    ranking = sorted(ranking, key=lambda x: int(x["Pontuacao"]), reverse=True)[:5]
+    ranking = sorted(ranking, key=lambda x: int(x["Pontuacao"]), reverse=True)[:10]
     
     with open(arquivo, mode="w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["Nome", "Pontuacao", "Tempo"])
         writer.writeheader()
         writer.writerows(ranking)
-
 
 def menu_principal(tela, largura):
     font_titulo = pygame.font.Font(None, 44)
