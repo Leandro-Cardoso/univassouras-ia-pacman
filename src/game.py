@@ -1,8 +1,8 @@
-import csv
-import os
 import random
 from collections import deque
 import pygame
+from menu import menu_principal
+from ia_logger import IALogger
 
 # Inicialização do Pygame
 pygame.init()
@@ -21,8 +21,6 @@ AZUL_MEDO = (30, 144, 255)
 AZUL_PISCANDO = (240, 248, 255)
 ROSA_PORTAO = (255, 170, 210)
 VERDE = (46, 204, 113)
-CINZA_INPUT = (35, 35, 60)
-BORDA_INPUT = (65, 135, 255)
 
 # Configurações do Grid (tela 560x620)
 GRID_SIZE = 20
@@ -66,7 +64,7 @@ MAPA_ORIGINAL = [
 LARGURA = len(MAPA_ORIGINAL[0]) * GRID_SIZE
 ALTURA = len(MAPA_ORIGINAL) * GRID_SIZE
 TELA = pygame.display.set_mode((LARGURA, ALTURA))
-pygame.display.set_caption("Pac-Man — Menu Gráfico e IA")
+pygame.display.set_caption("Pac-Man — Jogo e IA")
 
 TUNNEL_ROW = 14
 OPOSTOS = {
@@ -75,30 +73,6 @@ OPOSTOS = {
     "Esquerda": "Direita",
     "Direita": "Esquerda",
 }
-
-
-def carregar_ranking(arquivo="scores.csv"):
-    ranking = []
-    if os.path.exists(arquivo):
-        try:
-            with open(arquivo, mode="r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    ranking.append(row)
-        except Exception:
-            pass
-    return ranking
-
-
-def salvar_ranking(nome, pontuacao, tempo, arquivo="scores.csv"):
-    ranking = carregar_ranking(arquivo)
-    ranking.append({"Nome": nome, "Pontuacao": str(pontuacao), "Tempo": str(tempo)})
-    ranking = sorted(ranking, key=lambda x: int(x["Pontuacao"]), reverse=True)[:5]
-    
-    with open(arquivo, mode="w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["Nome", "Pontuacao", "Tempo"])
-        writer.writeheader()
-        writer.writerows(ranking)
 
 
 class PacmanGame:
@@ -190,6 +164,7 @@ class PacmanGame:
         self.retornar_menu = True
         self.frame = 0
         self.debug_mode = True
+        self.logger = IALogger(nome_jogador)
 
     def processar_eventos(self):
         for evento in pygame.event.get():
@@ -599,29 +574,6 @@ class PacmanGame:
         self.desenhar_debug()
         pygame.display.flip()
 
-    def salvar_dataset(self):
-        if not self.dados_telemetria:
-            return
-        
-        if self.morreu and self.dados_telemetria:
-            self.dados_telemetria[-1]["ia_sucesso_captura"] = 1
-            self.dados_telemetria[-1]["pos_morte_x"] = self.pos_morte_x
-            self.dados_telemetria[-1]["pos_morte_y"] = self.pos_morte_y
-
-        caminho_arquivo = "dataset_pacman.csv"
-        existe = os.path.exists(caminho_arquivo)
-        chaves = self.dados_telemetria[0].keys()
-        
-        with open(caminho_arquivo, mode="a", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=chaves)
-            if not existe:
-                writer.writeheader()
-            writer.writerows(self.dados_telemetria)
-        
-        tempo_total = round(self.frame / FPS, 1)
-        salvar_ranking(self.nome_jogador, self.pontuacao, f"{tempo_total}s")
-        print(f"[INFO] Dataset atualizado e pontuação salva!")
-
     def executar(self):
         try:
             while self.rodando:
@@ -632,81 +584,16 @@ class PacmanGame:
         except Exception as e:
             print(f"[ERRO CAPTURADO] {e}")
         finally:
-            self.salvar_dataset()
+            self.logger.salvar_dataset(
+                self.dados_telemetria, self.morreu, self.pos_morte_x, 
+                self.pos_morte_y, self.pontuacao, self.frame, FPS
+            )
             return self.retornar_menu
-
-
-def menu_principal():
-    font_titulo = pygame.font.Font(None, 44)
-    font_texto = pygame.font.Font(None, 22)
-    
-    nome_jogador = "Player1"
-    ativo_input = True  # Começa focado no input de nome
-
-    rodando_menu = True
-    while rodando_menu:
-        TELA.fill(PRETO)
-        
-        # Título
-        titulo = font_titulo.render("PAC-MAN — MENU PRINCIPAL", True, AMARELO)
-        TELA.blit(titulo, (LARGURA // 2 - titulo.get_width() // 2, 25))
-
-        # Caixa de Digitação do Nome
-        label_nome = font_texto.render("Digite seu Nome:", True, BRANCO)
-        TELA.blit(label_nome, (LARGURA // 2 - 140, 75))
-
-        input_rect = pygame.Rect(LARGURA // 2 - 140, 100, 280, 36)
-        pygame.draw.rect(TELA, CINZA_INPUT, input_rect, border_radius=6)
-        pygame.draw.rect(TELA, BORDA_INPUT if ativo_input else BRANCO, input_rect, 2, border_radius=6)
-
-        txt_surface = font_texto.render(nome_jogador, True, AMARELO if ativo_input else BRANCO)
-        TELA.blit(txt_surface, (input_rect.x + 10, input_rect.y + 8))
-
-        # Instrução para iniciar
-        instrucao = font_texto.render("Pressione [ENTER] para Jogar | [ESC] para Sair", True, VERDE)
-        TELA.blit(instrucao, (LARGURA // 2 - instrucao.get_width() // 2, 150))
-
-        # Quadro de Pontuações (Leaderboard)
-        rank_titulo = font_texto.render("--- MELHORES PONTUAÇÕES (RANKING) ---", True, CIANO)
-        TELA.blit(rank_titulo, (LARGURA // 2 - rank_titulo.get_width() // 2, 195))
-
-        ranking = carregar_ranking()
-        if not ranking:
-            vazio = font_texto.render("Nenhuma partida registrada ainda.", True, BRANCO)
-            TELA.blit(vazio, (LARGURA // 2 - vazio.get_width() // 2, 235))
-        else:
-            header = font_texto.render(f"{'Pos':<4} {'Nome':<12} {'Pontos':<10} {'Tempo'}", True, AMARELO)
-            TELA.blit(header, (70, 230))
-            for i, r in enumerate(ranking):
-                linha_txt = font_texto.render(f"{i+1}º   {r['Nome']:<12} {r['Pontuacao']:<10} {r['Tempo']}", True, BRANCO)
-                TELA.blit(linha_txt, (70, 260 + i * 26))
-
-        pygame.display.flip()
-
-        for evento in pygame.event.get():
-            if evento.type == pygame.QUIT:
-                pygame.quit()
-                exit()
-            elif evento.type == pygame.KEYDOWN:
-                if evento.key == pygame.K_RETURN:
-                    if nome_jogador.strip():
-                        rodando_menu = False
-                elif evento.key == pygame.K_ESCAPE:
-                    pygame.quit()
-                    exit()
-                elif evento.key == pygame.K_BACKSPACE:
-                    if ativo_input:
-                        nome_jogador = nome_jogador[:-1]
-                else:
-                    if ativo_input and len(nome_jogador) < 12:
-                        nome_jogador += evento.unicode
-
-    return nome_jogador.strip() if nome_jogador.strip() else "Player1"
 
 
 def main():
     while True:
-        nome_jogador = menu_principal()
+        nome_jogador = menu_principal(TELA, LARGURA)
         jogo = PacmanGame(nome_jogador)
         voltar = jogo.executar()
         if not voltar:
